@@ -6,7 +6,15 @@ const RELOAD_MS = 60_000; // status.json only changes every 5 min; this just re-
 
 // ---------- pure helpers (covered by test.mjs) ----------
 
-const RANK = { failure: 0, running: 1, queued: 2, neutral: 3, success: 4 };
+const RANK = { failure: 0, running: 1, queued: 2, neutral: 3, skipped: 3.5, success: 4 };
+
+/** Tooltip text for one pipeline stage (a job). Shown by the native title attr. */
+export function stageTip(stage) {
+  const bits = [stage.name, stage.state];
+  if (stage.failed_step) bits.push(`failed at: ${stage.failed_step}`);
+  if (stage.duration != null) bits.push(stage.duration >= 60 ? `${Math.round(stage.duration / 60)}m` : `${stage.duration}s`);
+  return bits.join(' · ');
+}
 
 /** Worst state in a repo, for the card's accent and sort order. */
 export function worstState(workflows) {
@@ -49,14 +57,40 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 const ICON = { success: '🟢', failure: '🔴', running: '🟡', queued: '🟡', neutral: '⚪️' };
 
+/** The horizontal dots: one per pipeline stage, hover for detail, click to open it. */
+function stageDots(stages) {
+  if (!stages?.length) return '';
+  return `<span class="stages">${stages.map((s) => `<a class="dot ${esc(s.state)}"
+    href="${esc(s.url)}" target="_blank" rel="noopener"
+    title="${esc(stageTip(s))}" aria-label="${esc(stageTip(s))}"></a>`).join('')}</span>`;
+}
+
 function workflowRow(w) {
   const meta = [w.branch, w.sha, w.author, w.finished_at && ago(w.finished_at)].filter(Boolean);
-  return `<a class="run ${esc(w.state)}" href="${esc(w.url)}" target="_blank" rel="noopener"
-      title="${esc(w.message || '')}">
+  return `<div class="run ${esc(w.state)}">
     <span class="icon">${ICON[w.state] || ICON.neutral}</span>
-    <span class="name">${esc(w.name)}</span>
+    <a class="name" href="${esc(w.url)}" target="_blank" rel="noopener"
+       title="${esc(w.message || '')}">${esc(w.name)}</a>
+    ${stageDots(w.stages)}
     <span class="meta">${esc(meta.join(' · '))}</span>
-  </a>`;
+  </div>`;
+}
+
+const NOW_LABEL = { success: 'all green', failure: 'failing', running: 'running', queued: 'queued', skipped: 'skipped', neutral: 'unknown' };
+
+/** The horizontal strip: failures over 24h / 7d, then the current state. */
+function statsStrip(r, state) {
+  const s = r.stats;
+  if (!s) return '';
+  const cell = (label, w) => `<span class="stat">
+    <em>${label}</em>
+    <b class="${w.failures ? 'bad' : ''}">${w.failures ? `🔴 ${w.failures}` : '🟢 0'}</b>
+    <i>of ${w.runs} run${w.runs === 1 ? '' : 's'}</i></span>`;
+  return `<div class="stats" title="${s.truncated ? 'based on the newest 100 runs per branch' : ''}">
+    ${cell('24h', s.day)}${cell('7d', s.week)}
+    <span class="stat"><em>now</em><b>${ICON[state] || ICON.neutral} ${NOW_LABEL[state] || state}</b>
+    <i>${esc((r.branches ?? []).join(', ') || 'all branches')}</i></span>
+  </div>`;
 }
 
 function repoCard(r) {
@@ -67,6 +101,7 @@ function repoCard(r) {
   return `<section class="card ${esc(state)}">
     <h2>${ICON[state] || ICON.neutral}
       <a href="https://github.com/${esc(r.repo)}/actions" target="_blank" rel="noopener">${esc(r.repo)}</a></h2>
+    ${statsStrip(r, state)}
     ${body}
   </section>`;
 }

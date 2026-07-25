@@ -1,23 +1,34 @@
 # PipelineHive 🐝
 
-One page that tells you whether all your GitHub Actions are green. Hosted free on
-GitHub Pages, works with private repositories, and every red workflow is a link
-straight to the **job that failed** — not the repo, not the run list, the failing
-job's log.
+One page that tells you whether all your GitHub Actions are green — the latest run
+of every workflow, on the branches you care about, with each pipeline's stages as a
+row of dots you can hover and click. Every red dot links straight to the **step that
+failed** — not the repo, not the run list, the exact line of the log.
 
 ```
 PipelineHive 🐝     3 / 5 healthy   🟢 3  🔴 1  🟡 1        data from 2m ago
 
 ┌─ 🔴 Recent failures ──────────────────────────────────────────────────────┐
-│ 🔴 your-org/api — CI            main · 83ab921 · you · 7m ago             │
+│ 🔴 your-org/api — CI     🟢🟢🔴⚪   main · 83ab921 · you · 7m ago          │
 └───────────────────────────────────────────────────────────────────────────┘
 
-┌─ 🔴 your-org/api ─────────────┐  ┌─ 🟢 your-org/web ─────────────┐
-│ 🔴 CI          main · 7m ago  │  │ 🟢 CI          main · 1h ago   │
-│ 🟢 Security    main · 7m ago  │  │ 🟢 Deploy      main · 1h ago   │
-│ 🟢 Docker      main · 7m ago  │  │ 🟢 CodeQL      main · 6h ago   │
-└───────────────────────────────┘  └────────────────────────────────┘
+┌─ 🔴 your-org/api ──────────────────┐  ┌─ 🟢 your-org/web ─────────────────┐
+│  24H       7D        NOW           │  │  24H       7D        NOW          │
+│  🔴 1      🔴 2      🔴 failing    │  │  🟢 0      🟢 0      🟢 all green  │
+│  of 15     of 25     main          │  │  of 4      of 9      main         │
+│ ────────────────────────────────── │  │ ───────────────────────────────── │
+│ 🔴 CI        🟢🟢🔴⚪  main · 7m    │  │ 🟢 CI        🟢🟢🟢   main · 1h    │
+│ 🟢 Security  🟢🟢     main · 7m    │  │ 🟢 Deploy    🟢🟢🟢   main · 1h    │
+└────────────────────────────────────┘  └───────────────────────────────────┘
+     ↑ hover a dot for detail, click it to open that job's log
 ```
+
+Two ways to run it, same code:
+
+- **Private, on your machine** — `./dev.sh`. Nothing is published; works with private
+  repos; no hosting at all. Start here if any repo you watch is private.
+- **Public, on GitHub Pages** — a scheduled workflow deploys it automatically.
+  Great for an open-source project's status page.
 
 ## How it works
 
@@ -50,27 +61,51 @@ about five minutes old. Three source files, no dependencies, no build step.
 | File | Job |
 | --- | --- |
 | [`config.json`](config.json) | The list of repositories to watch |
-| [`scripts/fetch-status.js`](scripts/fetch-status.js) | Runs in Actions, writes `status.json` |
+| [`scripts/fetch-status.js`](scripts/fetch-status.js) | Queries the API, writes `status.json` |
 | [`index.html`](index.html) + [`app.js`](app.js) | Renders `status.json` |
-| [`.github/workflows/update-dashboard.yml`](.github/workflows/update-dashboard.yml) | Cron, build, deploy |
+| [`dev.sh`](dev.sh) | Local private mode: refresh + serve on localhost |
+| [`.github/workflows/update-dashboard.yml`](.github/workflows/update-dashboard.yml) | Cron, build, deploy to Pages |
 
-`status.json` is generated during deploy and git-ignored — nothing to commit, no
+`status.json` is generated at run time and git-ignored — nothing to commit, no
 status noise in your history.
 
-## Setup
+## Private mode — run it on your machine
+
+The whole dashboard, none of it published:
+
+```bash
+./dev.sh
+```
+
+That's it. It borrows the token from your `gh` CLI login, writes `status.json`,
+serves <http://localhost:8000>, and refreshes every 5 minutes until you Ctrl-C.
+
+```bash
+GH_TOKEN=github_pat_xxx ./dev.sh   # explicit token instead of the gh CLI's
+PORT=9000 INTERVAL=60 ./dev.sh     # different port, faster refresh
+```
+
+Requirements: `node` 18+ and `python3` — both already on most dev machines.
+
+**Keep your repo list out of git** with `config.local.json`, which is git-ignored
+and takes precedence over `config.json`:
+
+```bash
+gh repo list <your-user> --limit 50 --json nameWithOwner --jq '{repos: [.[].nameWithOwner]}' > config.local.json
+```
+
+Now your private repo names, your dashboard, your machine — nothing leaves it
+except the API calls.
+
+## Public mode — deploy to GitHub Pages
 
 **1. Fork this repo** (or use it as a template).
 
 **2. Enable Pages:** repo **Settings → Pages → Build and deployment → Source:
 GitHub Actions**.
 
-**3. Pick your repositories** — edit [`config.json`](config.json) and commit:
-
-```json
-{ "repos": ["your-org/api", "your-org/web", "you/side-project"] }
-```
-
-Full GitHub URLs work too; duplicates and malformed entries are dropped.
+**3. Pick your repositories and branches** — edit [`config.json`](config.json) and
+commit. See [Configuration](#configuration) below.
 
 **4. Add a token if you want private repos** (skip for public-only dashboards).
 Create a **fine-grained personal access token** — GitHub → Settings → Developer
@@ -89,33 +124,57 @@ Without the secret the workflow falls back to the automatic `GITHUB_TOKEN`, whic
 can only see this repository — enough to prove the pipeline works, not enough to
 watch anything else.
 
-## Public or private dashboard
+> **In this repository the *Update dashboard* workflow is disabled**, because the
+> reference dashboard runs in private mode. Enable it in the Actions tab (or
+> `gh workflow enable "Update dashboard"`) once Pages is set up in your fork.
 
-The page is as public as the repo hosting it. Decide before you add private repos:
+## Configuration
 
-**Public dashboard** (public fork + Pages). Anyone with the URL sees it. The token
-is never exposed — it stays in Actions secrets and only ever runs server-side —
-but `status.json` is served publicly, so **the names, branches, commit SHAs,
-authors and pass/fail state of your private repos become public**. Fine for
-open-source projects; not fine for a private company dashboard.
+```json
+{
+  "branches": ["main", "master"],
+  "repos": [
+    "your-org/api",
+    "https://github.com/your-org/web",
+    { "repo": "your-org/platform", "branches": ["main", "develop"] }
+  ]
+}
+```
 
-**Private dashboard**, two ways:
+- **`branches`** — the branches you care about. Applies to every repo; a repo can
+  override it with its own list. Runs on any other branch (feature branches, PRs,
+  forks) are ignored, which is usually what you want on a dashboard.
+- **Omit `branches`, or use `[]`** — every branch counts, and a workflow will show
+  whichever branch ran it most recently.
+- **`repos`** — `"owner/repo"` strings, full GitHub URLs, or objects with a branch
+  override. Duplicates and malformed entries are dropped.
 
-- *Private repo + Pages access control* — supported on **GitHub Enterprise
-  Cloud**: make the fork private, enable Pages, then set **Settings → Pages →
-  Visibility → Private**. Only people with repo access can load the page.
-- *Don't publish it at all* — works on every plan. Keep the fork private, delete
-  the `deploy-pages` steps if you like, and run it locally:
+Only the **newest run per workflow** is shown; previous runs are never rendered.
+They still feed the 24h / 7d failure counts.
 
-  ```bash
-  GH_TOKEN=github_pat_xxx node scripts/fetch-status.js && python3 -m http.server 8000
-  ```
+Locally, put your list in **`config.local.json`** — it's git-ignored and takes
+precedence, so your private repo names never reach the public repo.
 
-  Then open <http://localhost:8000>. Nothing leaves your machine except the API
-  calls.
+## Read this before putting private repos on a public page
 
-If you're on a free or Pro plan and any watched repo is private, use the local
-option — or accept that its build status is public.
+**A GitHub Pages site is always publicly accessible.** Restricting a Pages site to
+people with repo access is a **GitHub Enterprise Cloud** feature; on Free and Pro
+there is no way to do it. Making the repo private does not help — on Free, Pages
+from a private repo isn't available at all, and on Pro the site builds but the URL
+stays public.
+
+The token is never at risk either way: it lives in Actions secrets and only ever
+runs server-side. `status.json` is the exposure. Published to a public Pages site
+it reveals **the names, branches, commit SHAs, authors and pass/fail state of every
+repo on the dashboard**, private ones included.
+
+So:
+
+| You want | Do this |
+| --- | --- |
+| Watch private repos, keep it to yourself | **Private mode** — `./dev.sh` (above) |
+| A public status page for open-source repos | Pages, with only public repos in `config.json` |
+| Hosted *and* private | GitHub Enterprise Cloud (**Settings → Pages → Visibility → Private**), or host the static output behind your own auth — e.g. Cloudflare Pages + Cloudflare Access |
 
 ## Reading the dashboard
 
@@ -126,12 +185,40 @@ option — or accept that its build status is public.
 | 🟡 | A run is in progress or queued |
 | ⚪️ | No conclusion to trust — cancelled, skipped, awaiting approval, no runs, or an API error |
 
-Each card shows the **newest run per workflow**, so a repo with 40 workflows still
-gets 40 lines, not 400. Clicking a row opens the run on GitHub; clicking a **red**
-row opens the failed job's log directly. The repo name links to its Actions tab.
+Each card shows the **newest run per workflow** — never a history of previous runs.
+Repos sort worst-first, with a *Recent failures* roll-up above the grid.
 
-Repos sort worst-first — whatever is broken is at the top, with a *Recent
-failures* summary above the grid.
+**The stats strip** across the top of every card:
+
+```
+┌──────────────┬──────────────┬────────────────┐
+│ 24H          │ 7D           │ NOW            │
+│ 🔴 1         │ 🔴 2         │ 🔴 failing     │
+│ of 15 runs   │ of 25 runs   │ main, master   │
+└──────────────┴──────────────┴────────────────┘
+```
+
+Failed runs in the last day and the last week — across every workflow on your
+branches — then the current state and which branches are being watched. A repo that
+fails twice a week and is green right now looks different from one that has never
+failed, and the strip is where you see that.
+
+**The dots** under each workflow are its pipeline stages — one dot per job, in
+execution order:
+
+```
+🔴 CI
+   🟢 🟢 🔴 ⚪ ⚪        ← lint ok, build ok, test failed, deploy skipped
+   main · 83ab921 · you · 7m ago
+```
+
+- **Hover** a dot for the job name, its result, the step that failed, and how long
+  it took.
+- **Click** a dot to open that job's log on GitHub — and if a step in it failed,
+  the link is anchored to that step, so the log opens exactly where it broke.
+- Hollow dots are skipped or cancelled jobs; the row's own name links to the run.
+
+The repo name links to its Actions tab.
 
 ## Tuning
 
@@ -142,9 +229,14 @@ failures* summary above the grid.
 - **Note:** GitHub disables scheduled workflows after **60 days** without repo
   activity. It emails you first; a manual run re-enables them.
 - **Browser re-read interval** — `RELOAD_MS` in [`app.js`](app.js).
-- **API budget** — one request per repo, plus one per *failing* workflow to locate
-  the failed job. With a token you have 5,000 requests/hour, so ~50 repos every 5
-  minutes is comfortable.
+- **API budget** — one request per repo per watched branch, plus one per workflow
+  shown (to read its jobs, which are the dots). Roughly `repos × (branches + workflows)`.
+  With a token you get 5,000 requests/hour, so ~20 repos on one branch refreshing
+  every 5 minutes sits around 1,500/hour. Trim branches or slow the cron if you
+  outgrow it.
+- **Stats depth** — the 24h/7d counts come from the newest 100 runs per branch. On a
+  very busy repo the 7d figure can undercount; the strip's tooltip says so when the
+  page was full.
 
 ## Development
 

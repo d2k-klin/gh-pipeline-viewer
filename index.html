@@ -35,16 +35,45 @@
   .card h2 { font-size: .95rem; margin: 0 0 .5rem; }
   .card h2 a { color: inherit; text-decoration: none; }
   .card h2 a:hover { text-decoration: underline; }
-  .run { display: grid; grid-template-columns: 1.4rem 1fr; gap: 0 .4rem; padding: .35rem 0;
-         color: inherit; text-decoration: none; border-top: 1px solid var(--line); }
-  .run:hover .name { text-decoration: underline; }
-  .icon { font-size: .8rem; line-height: 1.6; }
+  /* name on top, the pipeline's dots beneath it, then the commit meta */
+  .run { display: grid; grid-template-columns: 1.4rem 1fr;
+         gap: .15rem .4rem; padding: .4rem 0; border-top: 1px solid var(--line); }
+  .icon { grid-area: 1 / 1; font-size: .8rem; }
+  .name { grid-area: 1 / 2; }
+  .stages { grid-area: 2 / 2; }
+  .meta { grid-area: 3 / 2; }
   .run.running .icon, .run.queued .icon { animation: pulse 1.4s infinite; }
   @keyframes pulse { 50% { opacity: .25; } }
-  .name { font-weight: 500; }
+  .name { font-weight: 500; color: inherit; text-decoration: none; }
+  .name:hover { text-decoration: underline; }
   .run.failure .name { color: var(--bad); }
-  .meta { grid-column: 2; color: var(--muted); font-size: .78rem;
+  .meta { color: var(--muted); font-size: .78rem;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* One dot per pipeline stage (job), in execution order. Hover for detail,
+     click to open that job's log. Long pipelines scroll rather than wrap. */
+  .stages { display: flex; gap: 5px; align-items: center; padding: .15rem 0;
+            overflow-x: auto; scrollbar-width: none; }
+  .stages::-webkit-scrollbar { display: none; }
+  .dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: var(--idle);
+         transition: transform .1s; }
+  .dot:hover { transform: scale(1.6); }
+  .dot.success { background: var(--ok); }
+  .dot.failure { background: var(--bad); }
+  .dot.running, .dot.queued { background: var(--run); }
+  .dot.running { animation: pulse 1.4s infinite; }
+  .dot.skipped, .dot.neutral { background: transparent; box-shadow: inset 0 0 0 1.5px var(--idle); }
+  /* Per-repo horizontal stats strip */
+  .stats { display: flex; gap: .5rem; margin: 0 0 .6rem; }
+  .stat { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;
+          padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; }
+  .stat em { font-style: normal; font-size: .68rem; letter-spacing: .04em;
+             text-transform: uppercase; color: var(--muted); }
+  .stat b { font-size: .82rem; font-weight: 600; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; }
+  .stat b.bad { color: var(--bad); }
+  .stat i { font-style: normal; font-size: .68rem; color: var(--muted);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .error { color: var(--bad); font-size: .85rem; margin: 0 0 .4rem; }
   code { font-size: .8rem; }
 </style>

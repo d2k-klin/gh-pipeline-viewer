@@ -1,7 +1,8 @@
 {
-  "_comment": "The repos on your dashboard. Edit this list, commit, and the workflow picks it up. Private repos need the token to cover them.",
+  "_comment": "Your dashboard. 'branches' applies to every repo; a repo can override it. Empty list means every branch.",
+  "branches": ["main", "master"],
   "repos": [
     "actions/checkout",
-    "actions/runner"
+    { "repo": "actions/runner", "branches": ["main"] }
   ]
 }

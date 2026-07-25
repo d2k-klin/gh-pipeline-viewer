@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Builds status.json for the dashboard. Runs inside GitHub Actions, where the
-// token is a secret — the browser never sees it and never calls the API.
+// Builds status.json for the dashboard. Runs in GitHub Actions (token from a
+// secret) or locally via ./dev.sh — the browser never holds a token.
 // ponytail: node's built-in fetch, no octokit. This is two endpoints.
 //
 // Usage: GH_TOKEN=<pat> node scripts/fetch-status.js
@@ -13,10 +13,27 @@ const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 
 // ---------- pure helpers (covered by test.mjs) ----------
 
-/** Newest run per workflow. The API sorts newest-first, but don't rely on it. */
+/**
+ * config -> [{ repo, branches }]. Accepts "owner/repo" strings, full GitHub
+ * URLs, or { repo, branches } objects that override the top-level branches.
+ */
+export function normalizeRepos(cfg) {
+  const fallback = cfg?.branches ?? [];
+  const seen = new Set();
+  return (cfg?.repos ?? [])
+    .map((e) => (typeof e === 'string' ? { repo: e } : e ?? {}))
+    .map((e) => ({
+      repo: String(e.repo ?? '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/+$/, ''),
+      branches: (e.branches ?? fallback).filter(Boolean),
+    }))
+    .filter((e) => /^[\w.-]+\/[\w.-]+$/.test(e.repo))
+    .filter((e) => !seen.has(e.repo.toLowerCase()) && seen.add(e.repo.toLowerCase()));
+}
+
+/** The one run that matters per workflow: the newest. Older runs are dropped. */
 export function latestPerWorkflow(runs) {
   const best = new Map();
-  for (const run of runs || []) {
+  for (const run of runs ?? []) {
     const key = run.workflow_id ?? run.name;
     const prev = best.get(key);
     if (!prev || new Date(run.created_at) > new Date(prev.created_at)) best.set(key, run);
@@ -24,19 +41,61 @@ export function latestPerWorkflow(runs) {
   return [...best.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Run -> one of success | failure | running | queued | neutral. */
-export function stateOf(run) {
-  if (run.status !== 'completed') return run.status === 'queued' ? 'queued' : 'running';
-  return { success: 'success', failure: 'failure', timed_out: 'failure', startup_failure: 'failure' }[run.conclusion] || 'neutral';
+/** Run or job -> success | failure | running | queued | skipped | neutral. */
+export function stateOf(x) {
+  if (x.status !== 'completed') return x.status === 'queued' ? 'queued' : 'running';
+  return {
+    success: 'success', failure: 'failure', timed_out: 'failure',
+    startup_failure: 'failure', skipped: 'skipped',
+  }[x.conclusion] || 'neutral';
 }
 
-/** "owner/repo" entries -> deduped, validated list. Accepts full GitHub URLs. */
-export function parseRepos(list) {
-  const seen = new Set();
-  return (list || [])
-    .map((l) => String(l).trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/+$/, ''))
-    .filter((l) => /^[\w.-]+\/[\w.-]+$/.test(l))
-    .filter((l) => !seen.has(l.toLowerCase()) && seen.add(l.toLowerCase()));
+/** First step that broke, for the tooltip and the #step deep link. */
+export function failedStep(job) {
+  return (job.steps ?? []).find((s) => stateOf(s) === 'failure') || null;
+}
+
+/** A job's link — anchored at the failing step so the log opens where it broke. */
+export function jobUrl(job) {
+  const step = failedStep(job);
+  return step ? `${job.html_url}#step:${step.number}:1` : job.html_url;
+}
+
+/**
+ * Failure counts over the last day and week, from the runs already fetched.
+ * ponytail: capped at the newest 100 runs per branch — plenty for the 24h number,
+ * and `truncated` flags when the 7d window may be short. Paginate if that matters.
+ */
+export function windowStats(runs, now = Date.now()) {
+  const within = (h) => (r) => now - new Date(r.created_at) <= h * 3600e3;
+  const count = (list) => ({
+    runs: list.length,
+    failures: list.filter((r) => stateOf(r) === 'failure').length,
+  });
+  return {
+    day: count((runs ?? []).filter(within(24))),
+    week: count((runs ?? []).filter(within(24 * 7))),
+    truncated: (runs ?? []).length >= 100,
+  };
+}
+
+export function seconds(from, to) {
+  if (!from || !to) return null;
+  return Math.max(0, Math.round((new Date(to) - new Date(from)) / 1000));
+}
+
+/** Jobs -> the dots shown under a workflow, in execution order. */
+export function toStages(jobs) {
+  return (jobs ?? []).map((job) => {
+    const step = failedStep(job);
+    return {
+      name: job.name,
+      state: stateOf(job),
+      url: jobUrl(job),
+      duration: seconds(job.started_at, job.completed_at),
+      failed_step: step?.name ?? null,
+    };
+  });
 }
 
 // ---------- api ----------
@@ -56,48 +115,70 @@ async function gh(path) {
   return res.json();
 }
 
-/** For a failed run, point at the job that failed so the click lands on its log. */
-async function failedJobUrl(repo, run) {
-  try {
-    const { jobs } = await gh(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`);
-    const failed = jobs.find((j) => j.conclusion && !['success', 'skipped'].includes(j.conclusion));
-    return failed?.html_url || run.html_url;
-  } catch {
-    return run.html_url; // job lookup is a nicety, not worth failing the build over
+/** One request per watched branch; no branches configured means every branch. */
+async function fetchRuns(repo, branches) {
+  if (branches.length === 0) {
+    return (await gh(`/repos/${repo}/actions/runs?per_page=100`)).workflow_runs;
   }
+  const lists = await Promise.all(branches.map((b) =>
+    gh(`/repos/${repo}/actions/runs?per_page=100&branch=${encodeURIComponent(b)}`)
+      .then((r) => r.workflow_runs)));
+  return lists.flat();
 }
 
-async function repoStatus(repo) {
-  const { workflow_runs } = await gh(`/repos/${repo}/actions/runs?per_page=100`);
-  const workflows = await Promise.all(latestPerWorkflow(workflow_runs).map(async (run) => {
+async function repoStatus({ repo, branches }) {
+  const all = await fetchRuns(repo, branches);
+  const workflows = await Promise.all(latestPerWorkflow(all).map(async (run) => {
     const state = stateOf(run);
+    let stages = [];
+    try {
+      stages = toStages((await gh(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`)).jobs);
+    } catch (err) {
+      console.error(`${repo} ${run.name}: jobs unavailable (${err.message})`);
+    }
+    const broken = stages.find((s) => s.state === 'failure');
     return {
       name: run.name,
       state,
       branch: run.head_branch,
       event: run.event,
-      sha: (run.head_sha || '').slice(0, 7),
-      author: run.actor?.login || run.head_commit?.author?.name || null,
-      message: (run.head_commit?.message || '').split('\n')[0],
-      finished_at: run.updated_at || run.created_at,
-      url: state === 'failure' ? await failedJobUrl(repo, run) : run.html_url,
+      sha: (run.head_sha ?? '').slice(0, 7),
+      author: run.actor?.login ?? run.head_commit?.author?.name ?? null,
+      message: (run.head_commit?.message ?? '').split('\n')[0],
+      finished_at: run.updated_at ?? run.created_at,
+      url: broken?.url ?? run.html_url,
+      stages,
     };
   }));
-  return { repo, workflows };
+  return { repo, branches, workflows, stats: windowStats(all) };
+}
+
+/** config.local.json (git-ignored) wins, so a private repo list stays out of git. */
+async function loadConfig() {
+  for (const name of ['config.local.json', 'config.json']) {
+    try {
+      const cfg = JSON.parse(await readFile(new URL(`../${name}`, import.meta.url), 'utf8'));
+      if (name !== 'config.json') console.log(`using ${name}`);
+      return cfg;
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw new Error(`${name}: ${err.message}`);
+    }
+  }
+  throw new Error('no config.json found');
 }
 
 async function main() {
-  const cfg = JSON.parse(await readFile(new URL('../config.json', import.meta.url), 'utf8'));
-  const repos = parseRepos(cfg.repos);
-  if (repos.length === 0) throw new Error('config.json lists no valid "owner/repo" entries');
+  const cfg = await loadConfig();
+  const repos = normalizeRepos(cfg);
+  if (repos.length === 0) throw new Error('config: no valid "owner/repo" entries');
   if (!TOKEN) console.warn('warning: no GH_TOKEN — public repos only, 60 requests/hour');
 
-  const results = await Promise.all(repos.map(async (repo) => {
+  const results = await Promise.all(repos.map(async (entry) => {
     try {
-      return await repoStatus(repo);
+      return await repoStatus(entry);
     } catch (err) {
-      console.error(`${repo}: ${err.message}`);
-      return { repo, workflows: [], error: err.message };
+      console.error(`${entry.repo}: ${err.message}`);
+      return { repo: entry.repo, branches: entry.branches, workflows: [], error: err.message };
     }
   }));
 
