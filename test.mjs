@@ -5,7 +5,8 @@ import {
   seconds, windowStats,
 } from './scripts/fetch-status.js';
 import {
-  latestState, summarize, failures, stageTip, scope, applyFilters, configSummary, ago,
+  latestState, summarize, failures, stageTip, scope, applyFilters, configSummary,
+  selectionFor, buildConfig, ago,
 } from './app.js';
 
 // --- config ---
@@ -169,6 +170,57 @@ assert.equal(
   'branches: dev, main · workflows: CI',
 );
 assert.equal(configSummary([{ }]), 'branches: all · workflows: all');
+
+// --- per-repo band: saved selection ---
+
+const repo = { repo: 'org/api', branches: ['main'], selected: ['CI'] };
+assert.deepEqual(selectionFor(repo, {}), { branches: ['main'], workflows: ['CI'] },
+  'with nothing saved, the band shows what the fetcher collected');
+assert.deepEqual(
+  selectionFor(repo, { 'org/api': { branches: ['dev'], workflows: [] } }),
+  { branches: ['dev'], workflows: [] },
+  'a saved selection wins, and an empty list means everything',
+);
+assert.deepEqual(selectionFor({ repo: 'x/y' }, {}), { branches: [], workflows: [] });
+
+const banded = [
+  {
+    repo: 'org/api',
+    branches: ['main'],
+    selected: [],
+    workflows: [
+      { ...wfn('CI', 'success', '2024-01-02T00:00:00Z'), branch: 'main' },
+      // The newest run overall, and on a branch the selection below hides.
+      { ...wfn('Deploy', 'failure', '2024-01-08T00:00:00Z'), branch: 'dev' },
+    ],
+  },
+];
+assert.deepEqual(
+  applyFilters(banded, { saved: { 'org/api': { branches: ['main'], workflows: [] } } })[0]
+    .workflows.map((w) => w.name),
+  ['CI'],
+  'the saved branch selection hides rows from other branches',
+);
+assert.deepEqual(
+  applyFilters(banded, { saved: { 'org/api': { branches: [], workflows: ['deploy'] } } })[0]
+    .workflows.map((w) => w.name),
+  ['Deploy'],
+  'workflow selection is case-insensitive',
+);
+assert.equal(
+  applyFilters(banded, { saved: { 'org/api': { branches: ['main'], workflows: [] } } })[0].state,
+  'failure',
+  'a selection cannot recolour the repo: state still comes from every run',
+);
+
+assert.deepEqual(
+  buildConfig([repo, { repo: 'org/web' }], { 'org/api': { branches: ['dev'], workflows: ['CI', 'e2e'] } }).repos,
+  [
+    { repo: 'org/api', branches: ['dev'], workflows: ['CI', 'e2e'] },
+    { repo: 'org/web', branches: [], workflows: [] },
+  ],
+  'Save writes a config the fetcher can read back, repos without a selection included',
+);
 
 assert.deepEqual(failures(repos).map((w) => w.repo), ['b/red', 'f/stale'],
   'the roll-up still surfaces a red workflow whose repo counts as healthy');

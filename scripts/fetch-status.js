@@ -138,6 +138,22 @@ async function fetchRuns(repo, branches) {
   return lists.flat();
 }
 
+/**
+ * Everything that *could* be selected, independent of the current filters — so the
+ * dashboard's dropdowns can still offer a branch you have filtered out.
+ * ponytail: two extra requests per repo, the price of not painting yourself into a
+ * corner where a saved filter hides its own escape hatch.
+ */
+async function available(repo) {
+  const [branches, workflows] = await Promise.all([
+    gh(`/repos/${repo}/branches?per_page=100`).then((bs) => bs.map((b) => b.name)).catch(() => []),
+    gh(`/repos/${repo}/actions/workflows?per_page=100`)
+      .then((r) => r.workflows.filter((w) => w.state === 'active').map((w) => w.name)).catch(() => []),
+  ]);
+  const sort = (xs) => [...new Set(xs)].sort((a, b) => a.localeCompare(b));
+  return { branches: sort(branches), workflows: sort(workflows) };
+}
+
 async function repoStatus({ repo, branches, workflows: wanted }) {
   // Filter first: the stats, the cards and the job requests all follow from this.
   const all = (await fetchRuns(repo, branches)).filter((run) => matchesWorkflow(run, wanted));
@@ -163,7 +179,11 @@ async function repoStatus({ repo, branches, workflows: wanted }) {
       stages,
     };
   }));
-  return { repo, branches, selected: wanted, workflows, stats: windowStats(all) };
+  return {
+    repo, branches, selected: wanted, workflows,
+    stats: windowStats(all),
+    available: await available(repo),
+  };
 }
 
 /** config.local.json (git-ignored) wins, so a private repo list stays out of git. */

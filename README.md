@@ -64,6 +64,7 @@ about five minutes old. Three source files, no dependencies, no build step.
 | [`scripts/fetch-status.js`](scripts/fetch-status.js) | Queries the API, writes `status.json` |
 | [`index.html`](index.html) + [`app.js`](app.js) | Renders `status.json` |
 | [`dev.sh`](dev.sh) | Local private mode: refresh + serve on localhost |
+| [`scripts/serve.py`](scripts/serve.py) | Static server that also accepts the Save button's write |
 | [`.github/workflows/update-dashboard.yml`](.github/workflows/update-dashboard.yml) | Cron, build, deploy to Pages |
 
 `status.json` is generated at run time and git-ignored — nothing to commit, no
@@ -91,11 +92,13 @@ instead of quietly using another one.
 
 Requirements: `node` 18+ and `python3` — both already on most dev machines.
 
-**Keep your repo list out of git** with `config.local.json`, which is git-ignored
-and takes precedence over `config.json`:
+**Keep your repo list out of git** with `config.local.json`, which is git-ignored and
+takes precedence over `config.json`. Seed it with everything you own, then narrow it
+from the page's dropdowns and hit **Save**:
 
 ```bash
-gh repo list <your-user> --limit 50 --json nameWithOwner --jq '{repos: [.[].nameWithOwner]}' > config.local.json
+gh repo list <your-user> --limit 50 --json nameWithOwner \
+  --jq '{branches: ["main","master"], workflows: [], repos: [.[].nameWithOwner]}' > config.local.json
 ```
 
 Now your private repo names, your dashboard, your machine — nothing leaves it
@@ -240,14 +243,41 @@ execution order:
 
 The repo name links to its Actions tab.
 
+## Choosing what you see, from the page
+
+Every repo gets a horizontal band with its stats and its own two dropdowns:
+
+```
+┌─ 🟢 your-org/api ─────────────────────────────────────────────────────────────┐
+│  24H      7D       NOW          ┌ BRANCHES  main ▾ ┐ ┌ WORKFLOWS  CI ▾ ┐ Save │
+│  🟢 0     🔴 2     🟢 all green  │ ☑ main           │ │ all             │      │
+│  of 4     of 19    CI · main    │ ☐ develop        │ │ ☑ CI            │      │
+│                                 │ ☐ release/2.1    │ │ ☐ Deploy        │      │
+└─────────────────────────────────┴──────────────────┴─┴─────────────────┴──────┘
+```
+
+Tick the branches and workflows you want; the view updates as you tick. Nothing
+checked means *everything*, and the **all** link in each dropdown resets to that.
+
+**Save** writes your choices to `config.local.json` — a git-ignored file, so it
+never reaches the repo and survives across runs. It's the same format the fetcher
+reads, so from the next refresh onward it stops collecting what you don't look at.
+Saving needs the local dev server ([`scripts/serve.py`](scripts/serve.py), which
+`./dev.sh` starts for you); on a hosted page there's nothing to write to, so the
+button falls back to remembering the selection in that browser and says so.
+
+The dropdowns always list **every** branch and workflow the repo has, not just the
+ones currently collected — so a filter can never hide its own undo.
+
 ## Filtering
 
-Two layers, and it's worth knowing which one you want:
+Three layers, and it's worth knowing which one you want:
 
 | | Where | What it does |
 | --- | --- | --- |
-| **Collection** | `config.json` / `config.local.json` | Decides what the fetcher even asks GitHub for — repos, branches, workflows. Fewer API calls, smaller `status.json`. |
-| **View** | the filter bar on the page | Narrows what's displayed right now, over whatever `status.json` holds. Instant, no refetch. |
+| **Collection** | `config.json` / `config.local.json` | Decides what the fetcher even asks GitHub for. Fewer API calls, smaller `status.json`. |
+| **Per repo** | the band's dropdowns, then **Save** | Picks branches and workflows for one repo. Instant in the view; written to `config.local.json` so collection follows. |
+| **View** | the filter bar at the top | Narrows what's displayed right now, across all repos. Instant, nothing persisted but the box itself. |
 
 The filter bar gives you a search box (matches repo names *and* workflow names) and
 a **failures only** toggle. Both persist in your browser, and the current collection
@@ -272,11 +302,11 @@ many of its rows the filter hid.
 - **Note:** GitHub disables scheduled workflows after **60 days** without repo
   activity. It emails you first; a manual run re-enables them.
 - **Browser re-read interval** — `RELOAD_MS` in [`app.js`](app.js).
-- **API budget** — one request per repo per watched branch, plus one per workflow
-  shown (to read its jobs, which are the dots). Roughly `repos × (branches + workflows)`.
-  With a token you get 5,000 requests/hour, so ~20 repos on one branch refreshing
-  every 5 minutes sits around 1,500/hour. Trim branches or slow the cron if you
-  outgrow it.
+- **API budget** — per repo: one request per watched branch, one per workflow shown
+  (its jobs are the dots), and two for the dropdown options. Roughly
+  `repos × (branches + workflows + 2)`. With a token you get 5,000 requests/hour, so
+  ~20 repos on one branch refreshing every 5 minutes sits around 2,000/hour. Narrowing
+  the bands and saving is the cheapest way to cut it — that's the point of Save.
 - **Stats depth** — the 24h/7d counts come from the newest 100 runs per branch. On a
   very busy repo the 7d figure can undercount; the strip's tooltip says so when the
   page was full.

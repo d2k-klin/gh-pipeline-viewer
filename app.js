@@ -49,22 +49,39 @@ export function failures(repos) {
 }
 
 /**
+ * What a repo's band is set to: the saved per-repo selection if there is one,
+ * otherwise whatever the fetcher collected. Empty list means "everything".
+ */
+export function selectionFor(repo, saved = {}) {
+  const mine = saved[repo.repo] ?? {};
+  return {
+    branches: mine.branches ?? repo.branches ?? [],
+    workflows: mine.workflows ?? repo.selected ?? [],
+  };
+}
+
+/**
  * On-page filtering over whatever status.json holds. `state` is attached from the
  * unfiltered workflow list, so hiding rows never changes a repo's colour or stats.
  */
-export function applyFilters(repos, { q = '', failuresOnly = false } = {}) {
+export function applyFilters(repos, { q = '', failuresOnly = false, saved = {} } = {}) {
   const needle = q.trim().toLowerCase();
   return (repos ?? [])
     .map((r) => {
       const repoHit = r.repo.toLowerCase().includes(needle);
+      const sel = selectionFor(r, saved);
+      const pick = (list, value) => list.length === 0 || list.some((x) =>
+        String(x).toLowerCase() === String(value ?? '').toLowerCase());
       return {
         ...r,
         state: r.error ? 'neutral' : latestState(r.workflows),
+        selection: sel,
         hidden: (r.workflows ?? []).length - (r.workflows ?? []).filter(keep).length,
         workflows: (r.workflows ?? []).filter(keep),
       };
       function keep(w) {
-        return (!needle || repoHit || w.name.toLowerCase().includes(needle))
+        return pick(sel.branches, w.branch) && pick(sel.workflows, w.name)
+          && (!needle || repoHit || w.name.toLowerCase().includes(needle))
           && (!failuresOnly || w.state === 'failure');
       }
     })
@@ -72,6 +89,20 @@ export function applyFilters(repos, { q = '', failuresOnly = false } = {}) {
       if (failuresOnly) return r.workflows.length > 0;
       return !needle || r.repo.toLowerCase().includes(needle) || r.workflows.length > 0;
     });
+}
+
+/**
+ * The saved selections as a config.json-shaped object, ready to become
+ * config.local.json so the *fetcher* honours it on the next refresh too.
+ */
+export function buildConfig(repos, saved = {}) {
+  return {
+    _comment: 'Written by the dashboard\'s Save button. Git-ignored; edit either here or in the UI.',
+    repos: (repos ?? []).map((r) => {
+      const sel = selectionFor(r, saved);
+      return { repo: r.repo, branches: sel.branches, workflows: sel.workflows };
+    }),
+  };
 }
 
 /** The config-level filters in force, so the page shows what it is watching. */
@@ -139,6 +170,38 @@ function statsStrip(r, state) {
   </div>`;
 }
 
+/** A native dropdown: <details> + checkboxes. No library, keyboard-accessible. */
+function dropdown(repo, kind, options, chosen) {
+  const label = chosen.length === 0 ? `all ${kind}` : chosen.join(', ');
+  const items = options.length === 0
+    ? `<p class="muted">none found</p>`
+    : options.map((name) => `<label><input type="checkbox" data-repo="${esc(repo)}"
+        data-kind="${esc(kind)}" value="${esc(name)}"
+        ${chosen.some((c) => c.toLowerCase() === name.toLowerCase()) ? 'checked' : ''}>
+        ${esc(name)}</label>`).join('');
+  return `<details class="dd" data-dd="${esc(repo)}:${esc(kind)}">
+    <summary title="${esc(label)}"><span class="dd-kind">${kind}</span> ${esc(label)}</summary>
+    <div class="menu">
+      <button class="link" data-all="${esc(repo)}:${esc(kind)}">all</button>
+      ${items}
+    </div>
+  </details>`;
+}
+
+/** The per-repo horizontal band: stats, then what to show, then Save. */
+function repoBand(r, state) {
+  const sel = r.selection ?? { branches: [], workflows: [] };
+  const avail = r.available ?? { branches: [], workflows: [] };
+  return `<div class="band">
+    ${statsStrip(r, state)}
+    <div class="picker">
+      ${dropdown(r.repo, 'branches', avail.branches, sel.branches)}
+      ${dropdown(r.repo, 'workflows', avail.workflows, sel.workflows)}
+      <button data-save="${esc(r.repo)}">Save</button>
+    </div>
+  </div>`;
+}
+
 function repoCard(r) {
   const state = r.state ?? 'neutral';
   const hidden = r.hidden ? `<p class="muted">+ ${r.hidden} hidden by the filter</p>` : '';
@@ -151,7 +214,7 @@ function repoCard(r) {
   return `<section class="card ${esc(state)}">
     <h2>${ICON[state] || ICON.neutral}
       <a href="https://github.com/${esc(r.repo)}/actions" target="_blank" rel="noopener">${esc(r.repo)}</a></h2>
-    ${statsStrip(r, state)}
+    ${repoBand(r, state)}
     ${body}
   </section>`;
 }
@@ -161,13 +224,67 @@ let STATUS = { repos: [] };
 const filters = {
   get q() { return localStorage.getItem('ghpv.q') ?? ''; },
   get failuresOnly() { return localStorage.getItem('ghpv.failuresOnly') === '1'; },
+  get saved() { return readSaved(); },
 };
+
+/** Per-repo selections live in localStorage; Save also writes config.local.json. */
+function readSaved() {
+  try {
+    return JSON.parse(localStorage.getItem('ghpv.selection') ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function writeSaved(saved) {
+  localStorage.setItem('ghpv.selection', JSON.stringify(saved));
+}
+
+/** Toggle one checkbox's value in the saved selection, then re-render. */
+function toggle(repo, kind, value, on) {
+  const saved = readSaved();
+  const repoData = STATUS.repos.find((r) => r.repo === repo);
+  const current = [...selectionFor(repoData ?? { repo }, saved)[kind]];
+  const next = on
+    ? [...new Set([...current, value])]
+    : current.filter((x) => x.toLowerCase() !== value.toLowerCase());
+  saved[repo] = { ...selectionFor(repoData ?? { repo }, saved), [kind]: next };
+  writeSaved(saved);
+  render();
+}
+
+function selectAll(repo, kind) {
+  const saved = readSaved();
+  saved[repo] = { ...selectionFor(STATUS.repos.find((r) => r.repo === repo) ?? { repo }, saved), [kind]: [] };
+  writeSaved(saved);
+  render();
+}
+
+/**
+ * Persist to config.local.json via the local dev server, so the next fetch
+ * collects exactly this. On GitHub Pages there is nothing to write to — the
+ * selection still persists in this browser.
+ */
+async function save(repo, button) {
+  const body = JSON.stringify(buildConfig(STATUS.repos, readSaved()), null, 2);
+  button.disabled = true;
+  try {
+    const res = await fetch('config.local.json', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body,
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    button.textContent = 'saved to file';
+  } catch {
+    button.textContent = 'saved in browser';
+  }
+  setTimeout(() => { button.textContent = 'Save'; button.disabled = false; render(); }, 2500);
+}
 
 function render() {
   const all = STATUS.repos ?? [];
   // Counts describe the whole fleet, never just the filtered slice.
   const c = summarize(all);
-  const shown = applyFilters(all, filters)
+  const shown = applyFilters(all, { q: filters.q, failuresOnly: filters.failuresOnly, saved: filters.saved })
     .sort((a, b) => RANK[a.state] - RANK[b.state] || a.repo.localeCompare(b.repo));
 
   $('#summary').innerHTML = `
@@ -184,9 +301,12 @@ function render() {
     ${bad.map((w) => workflowRow({ ...w, name: `${w.repo} — ${w.name}` })).join('')}
   </section>`;
 
+  // Keep open dropdowns open across the re-render that ticking a box triggers.
+  const open = new Set([...document.querySelectorAll('#grid details[open]')].map((d) => d.dataset.dd));
   $('#grid').innerHTML = shown.length === 0
     ? '<p class="muted">Nothing matches the filter.</p>'
     : shown.map(repoCard).join('');
+  for (const d of document.querySelectorAll('#grid details')) d.open = open.has(d.dataset.dd);
   $('#status').textContent = STATUS.generated_at
     ? `data from ${ago(STATUS.generated_at)} (${new Date(STATUS.generated_at).toLocaleTimeString()})`
     : '';
@@ -221,6 +341,18 @@ if (typeof document !== 'undefined') {
     q.value = ''; only.checked = false; render();
   };
   $('#reload').onclick = load;
+
+  // One delegated pair of listeners: the grid is re-rendered constantly.
+  $('#grid').addEventListener('change', (e) => {
+    const box = e.target.closest('input[type=checkbox][data-repo]');
+    if (box) toggle(box.dataset.repo, box.dataset.kind, box.value, box.checked);
+  });
+  $('#grid').addEventListener('click', (e) => {
+    const all = e.target.closest('[data-all]');
+    if (all) return selectAll(...all.dataset.all.split(':'));
+    const btn = e.target.closest('[data-save]');
+    if (btn) return save(btn.dataset.save, btn);
+  });
 
   load();
   setInterval(load, RELOAD_MS);

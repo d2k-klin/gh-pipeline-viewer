@@ -50,4 +50,5 @@ REFRESHER=$!
 trap 'kill "$REFRESHER" 2>/dev/null || true' EXIT INT TERM
 
 echo "→ http://localhost:$PORT  (refreshing every ${INTERVAL}s, Ctrl-C to stop)"
-python3 -m http.server "$PORT" --bind 127.0.0.1
+# serve.py also accepts the dashboard's Save, writing config.local.json.
+python3 scripts/serve.py "$PORT"
