@@ -4,7 +4,9 @@ import {
   normalizeRepos, matchesWorkflow, latestPerWorkflow, stateOf, failedStep, jobUrl, toStages,
   seconds, windowStats,
 } from './scripts/fetch-status.js';
-import { worstState, summarize, failures, stageTip, scope, ago } from './app.js';
+import {
+  latestState, summarize, failures, stageTip, scope, applyFilters, configSummary, ago,
+} from './app.js';
 
 // --- config ---
 
@@ -112,11 +114,20 @@ assert.equal(stageTip({ name: 'lint', state: 'success', duration: 12 }), 'lint �
 
 const wf = (state, finished_at = '2024-01-02T00:00:00Z') => ({ name: state, state, finished_at });
 
-assert.equal(worstState([wf('success'), wf('failure'), wf('running')]), 'failure', 'failure beats all');
-assert.equal(worstState([wf('success'), wf('running')]), 'running');
-assert.equal(worstState([wf('success'), wf('skipped')]), 'skipped');
-assert.equal(worstState([wf('success')]), 'success');
-assert.equal(worstState([]), 'neutral', 'no workflows is not a failure');
+// A repo is coloured by its most recent run, not by the worst one.
+assert.equal(
+  latestState([wf('failure', '2024-01-01T00:00:00Z'), wf('success', '2024-01-05T00:00:00Z')]),
+  'success',
+  'an older failing workflow no longer reddens the repo',
+);
+assert.equal(
+  latestState([wf('success', '2024-01-01T00:00:00Z'), wf('failure', '2024-01-05T00:00:00Z')]),
+  'failure',
+  'the newest run failing does',
+);
+assert.equal(latestState([wf('running', '2024-01-05T00:00:00Z'), wf('success')]), 'running');
+assert.equal(latestState([wf('success')]), 'success');
+assert.equal(latestState([]), 'neutral', 'no workflows is not a failure');
 
 const repos = [
   { repo: 'a/green', workflows: [wf('success'), wf('success')] },
@@ -124,12 +135,43 @@ const repos = [
   { repo: 'c/amber', workflows: [wf('running')] },
   { repo: 'd/broken', workflows: [], error: '404 not found' },
   { repo: 'e/empty', workflows: [] },
+  { repo: 'f/stale', workflows: [wf('failure', '2024-01-01T00:00:00Z'), wf('success', '2024-01-09T00:00:00Z')] },
 ];
-assert.deepEqual(summarize(repos), { healthy: 1, failed: 1, running: 1, unknown: 2 },
-  'errored and run-less repos are unknown, never healthy or failed');
+assert.deepEqual(summarize(repos), { healthy: 2, failed: 1, running: 1, unknown: 2 },
+  'f/stale counts as healthy: its latest run passed');
 assert.deepEqual(summarize([]), { healthy: 0, failed: 0, running: 0, unknown: 0 });
 
-assert.deepEqual(failures(repos).map((w) => w.repo), ['b/red'], 'only failures, newest first');
+// --- on-page filters ---
+
+const wfn = (name, state, finished_at = '2024-01-02T00:00:00Z') => ({ name, state, finished_at });
+const fleet = [
+  { repo: 'org/api', workflows: [wfn('CI', 'failure'), wfn('Deploy', 'success')] },
+  { repo: 'org/web', workflows: [wfn('CI', 'success')] },
+  { repo: 'other/tool', workflows: [wfn('Release', 'success')] },
+];
+
+assert.deepEqual(applyFilters(fleet, {}).map((r) => r.repo), ['org/api', 'org/web', 'other/tool'],
+  'no filter shows everything');
+assert.deepEqual(applyFilters(fleet, { q: 'org/' }).map((r) => r.repo), ['org/api', 'org/web'],
+  'matching the repo name keeps all its workflows');
+assert.deepEqual(applyFilters(fleet, { q: 'org/' })[0].workflows.length, 2);
+assert.deepEqual(applyFilters(fleet, { q: 'deploy' }).map((r) => [r.repo, r.workflows.map((w) => w.name), r.hidden]),
+  [['org/api', ['Deploy'], 1]], 'matching a workflow narrows the rows and counts what it hid');
+assert.deepEqual(applyFilters(fleet, { failuresOnly: true }).map((r) => [r.repo, r.workflows.map((w) => w.name)]),
+  [['org/api', ['CI']]], 'failures only drops green repos and green rows');
+assert.deepEqual(applyFilters(fleet, { q: 'nothing-matches' }), []);
+assert.equal(applyFilters(fleet, { failuresOnly: true })[0].state, 'failure',
+  'state comes from the unfiltered list, so filtering cannot recolour a card');
+assert.deepEqual(applyFilters(undefined, {}), []);
+
+assert.equal(
+  configSummary([{ branches: ['main'], selected: ['CI'] }, { branches: ['main', 'dev'], selected: [] }]),
+  'branches: dev, main · workflows: CI',
+);
+assert.equal(configSummary([{ }]), 'branches: all · workflows: all');
+
+assert.deepEqual(failures(repos).map((w) => w.repo), ['b/red', 'f/stale'],
+  'the roll-up still surfaces a red workflow whose repo counts as healthy');
 assert.deepEqual(
   failures([{ repo: 'x/1', workflows: [wf('failure', '2024-01-01T00:00:00Z')] },
             { repo: 'x/2', workflows: [wf('failure', '2024-01-03T00:00:00Z')] }]).map((w) => w.repo),

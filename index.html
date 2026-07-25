@@ -25,6 +25,12 @@
            background: var(--card); color: var(--fg); cursor: pointer; }
   button:hover { border-color: var(--muted); }
   .muted, #status { color: var(--muted); font-size: .85rem; }
+  #controls { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  #controls label { display: flex; align-items: center; gap: .3rem; font-size: .85rem;
+                    color: var(--muted); cursor: pointer; }
+  #q { flex: 0 1 22rem; font: inherit; font-size: .9rem; padding: .35rem .6rem;
+       border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+  #config { color: var(--muted); font-size: .78rem; margin-left: auto; }
   #failures { margin-bottom: 1rem; }
   #grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
@@ -85,6 +91,14 @@
   <span id="status"></span>
   <button id="reload">Refresh</button>
 </header>
+
+<div id="controls">
+  <input id="q" type="search" placeholder="filter by repo or workflow…" spellcheck="false"
+         aria-label="Filter by repository or workflow name">
+  <label><input id="only" type="checkbox"> failures only</label>
+  <button id="clear">Clear</button>
+  <span id="config" title="Set in config.json — the fetcher only collects these"></span>
+</div>
 
 <div id="failures"></div>
 <div id="grid"><p class="muted">Loading…</p></div>

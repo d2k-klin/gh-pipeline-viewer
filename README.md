@@ -191,12 +191,19 @@ So:
 
 ## Reading the dashboard
 
-| | Meaning |
+**A repo's colour is its most recent run.** Green means the last thing that ran
+passed — the "did I just break something" question. A workflow that failed days ago
+and hasn't run since does *not* redden the repo; it stays a red row in the card and
+in the *Recent failures* list, where you can still see it.
+
+| | Meaning (repo card) |
 | --- | --- |
-| 🟢 | Latest run of every workflow succeeded |
-| 🔴 | At least one workflow failed, timed out, or failed at startup |
-| 🟡 | A run is in progress or queued |
-| ⚪️ | No conclusion to trust — cancelled, skipped, awaiting approval, no runs, or an API error |
+| 🟢 | The most recent run passed |
+| 🔴 | The most recent run failed, timed out, or failed at startup |
+| 🟡 | The most recent run is in progress or queued |
+| ⚪️ | Nothing to trust — cancelled, skipped, awaiting approval, no runs, or an API error |
+
+Individual workflow rows and stage dots always show their own real state.
 
 Each card shows the **newest run per workflow** — never a history of previous runs.
 Repos sort worst-first, with a *Recent failures* roll-up above the grid.
@@ -232,6 +239,29 @@ execution order:
 - Hollow dots are skipped or cancelled jobs; the row's own name links to the run.
 
 The repo name links to its Actions tab.
+
+## Filtering
+
+Two layers, and it's worth knowing which one you want:
+
+| | Where | What it does |
+| --- | --- | --- |
+| **Collection** | `config.json` / `config.local.json` | Decides what the fetcher even asks GitHub for — repos, branches, workflows. Fewer API calls, smaller `status.json`. |
+| **View** | the filter bar on the page | Narrows what's displayed right now, over whatever `status.json` holds. Instant, no refetch. |
+
+The filter bar gives you a search box (matches repo names *and* workflow names) and
+a **failures only** toggle. Both persist in your browser, and the current collection
+filters are printed on the right of the bar so the page always tells you what it is
+watching:
+
+```
+[ terraform            ]  ☐ failures only  [Clear]     branches: main, master · workflows: all
+   8 / 18 healthy  🟢 8  🔴 2  ⚪️ 8   showing 2 of 18
+```
+
+Filtering only hides rows — it never changes a repo's colour, its 24h/7d counts, or
+the headline totals, which always describe the whole fleet. A card tells you how
+many of its rows the filter hid.
 
 ## Tuning
 

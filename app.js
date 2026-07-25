@@ -16,16 +16,22 @@ export function stageTip(stage) {
   return bits.join(' · ');
 }
 
-/** Worst state in a repo, for the card's accent and sort order. */
-export function worstState(workflows) {
-  return (workflows || []).map((w) => w.state).sort((a, b) => RANK[a] - RANK[b])[0] || 'neutral';
+/**
+ * A repo's state is its most recent run's state: green if the last thing that ran
+ * passed. Older workflows that are still red stay visible as red rows and in the
+ * failures roll-up, but they no longer colour the whole repo.
+ */
+export function latestState(workflows) {
+  const newest = (workflows ?? []).reduce(
+    (best, w) => (!best || new Date(w.finished_at) > new Date(best.finished_at) ? w : best), null);
+  return newest?.state ?? 'neutral';
 }
 
-/** Headline counts: a repo is failed/running/healthy by its worst workflow. */
+/** Headline counts: a repo is failed/running/healthy by its most recent run. */
 export function summarize(repos) {
   const counts = { healthy: 0, failed: 0, running: 0, unknown: 0 };
   for (const r of repos || []) {
-    const state = r.error ? 'error' : worstState(r.workflows);
+    const state = r.error ? 'error' : latestState(r.workflows);
     if (state === 'failure') counts.failed++;
     else if (state === 'running' || state === 'queued') counts.running++;
     else if (state === 'success') counts.healthy++;
@@ -40,6 +46,40 @@ export function failures(repos) {
     .filter((w) => w.state === 'failure')
     .map((w) => ({ ...w, repo: r.repo })))
     .sort((a, b) => new Date(b.finished_at) - new Date(a.finished_at));
+}
+
+/**
+ * On-page filtering over whatever status.json holds. `state` is attached from the
+ * unfiltered workflow list, so hiding rows never changes a repo's colour or stats.
+ */
+export function applyFilters(repos, { q = '', failuresOnly = false } = {}) {
+  const needle = q.trim().toLowerCase();
+  return (repos ?? [])
+    .map((r) => {
+      const repoHit = r.repo.toLowerCase().includes(needle);
+      return {
+        ...r,
+        state: r.error ? 'neutral' : latestState(r.workflows),
+        hidden: (r.workflows ?? []).length - (r.workflows ?? []).filter(keep).length,
+        workflows: (r.workflows ?? []).filter(keep),
+      };
+      function keep(w) {
+        return (!needle || repoHit || w.name.toLowerCase().includes(needle))
+          && (!failuresOnly || w.state === 'failure');
+      }
+    })
+    .filter((r) => {
+      if (failuresOnly) return r.workflows.length > 0;
+      return !needle || r.repo.toLowerCase().includes(needle) || r.workflows.length > 0;
+    });
+}
+
+/** The config-level filters in force, so the page shows what it is watching. */
+export function configSummary(repos) {
+  const uniq = (xs) => [...new Set(xs)].sort();
+  const branches = uniq((repos ?? []).flatMap((r) => r.branches ?? []));
+  const workflows = uniq((repos ?? []).flatMap((r) => r.selected ?? []));
+  return `branches: ${branches.join(', ') || 'all'} · workflows: ${workflows.join(', ') || 'all'}`;
 }
 
 export function ago(iso, now = Date.now()) {
@@ -100,13 +140,14 @@ function statsStrip(r, state) {
 }
 
 function repoCard(r) {
-  const state = r.error ? 'neutral' : worstState(r.workflows);
+  const state = r.state ?? 'neutral';
+  const hidden = r.hidden ? `<p class="muted">+ ${r.hidden} hidden by the filter</p>` : '';
   const body = r.error ? `<p class="error">${esc(r.error)}</p>`
-    : r.workflows.length > 0 ? r.workflows.map(workflowRow).join('')
+    : r.workflows.length > 0 ? r.workflows.map(workflowRow).join('') + hidden
     // An empty card with filters set is nearly always a typo in the config.
     : r.selected?.length ? `<p class="muted">No runs for ${esc(r.selected.join(', '))} on
         ${esc((r.branches ?? []).join(', ') || 'any branch')} — check the names in your config.</p>`
-    : '<p class="muted">No workflow runs yet.</p>';
+    : `<p class="muted">No workflow runs yet.</p>${hidden}`;
   return `<section class="card ${esc(state)}">
     <h2>${ICON[state] || ICON.neutral}
       <a href="https://github.com/${esc(r.repo)}/actions" target="_blank" rel="noopener">${esc(r.repo)}</a></h2>
@@ -115,25 +156,39 @@ function repoCard(r) {
   </section>`;
 }
 
-function render(status) {
-  const repos = [...(status.repos || [])].sort((a, b) =>
-    RANK[worstState(a.workflows)] - RANK[worstState(b.workflows)] || a.repo.localeCompare(b.repo));
-  const c = summarize(repos);
+let STATUS = { repos: [] };
+
+const filters = {
+  get q() { return localStorage.getItem('ghpv.q') ?? ''; },
+  get failuresOnly() { return localStorage.getItem('ghpv.failuresOnly') === '1'; },
+};
+
+function render() {
+  const all = STATUS.repos ?? [];
+  // Counts describe the whole fleet, never just the filtered slice.
+  const c = summarize(all);
+  const shown = applyFilters(all, filters)
+    .sort((a, b) => RANK[a.state] - RANK[b.state] || a.repo.localeCompare(b.repo));
 
   $('#summary').innerHTML = `
-    <strong>${c.healthy} / ${repos.length} healthy</strong>
+    <strong>${c.healthy} / ${all.length} healthy</strong>
     <span>🟢 ${c.healthy}</span>${c.failed ? `<span class="bad">🔴 ${c.failed}</span>` : ''}
-    ${c.running ? `<span>🟡 ${c.running}</span>` : ''}${c.unknown ? `<span>⚪️ ${c.unknown}</span>` : ''}`;
+    ${c.running ? `<span>🟡 ${c.running}</span>` : ''}${c.unknown ? `<span>⚪️ ${c.unknown}</span>` : ''}
+    ${shown.length === all.length ? '' : `<span class="muted">showing ${shown.length} of ${all.length}</span>`}`;
 
-  const bad = failures(repos);
+  $('#config').textContent = configSummary(all);
+
+  const bad = failures(shown);
   $('#failures').innerHTML = bad.length === 0 ? '' : `<section class="card failure">
     <h2>🔴 Recent failures</h2>
     ${bad.map((w) => workflowRow({ ...w, name: `${w.repo} — ${w.name}` })).join('')}
   </section>`;
 
-  $('#grid').innerHTML = repos.map(repoCard).join('');
-  $('#status').textContent = status.generated_at
-    ? `data from ${ago(status.generated_at)} (${new Date(status.generated_at).toLocaleTimeString()})`
+  $('#grid').innerHTML = shown.length === 0
+    ? '<p class="muted">Nothing matches the filter.</p>'
+    : shown.map(repoCard).join('');
+  $('#status').textContent = STATUS.generated_at
+    ? `data from ${ago(STATUS.generated_at)} (${new Date(STATUS.generated_at).toLocaleTimeString()})`
     : '';
 }
 
@@ -142,7 +197,8 @@ async function load() {
     // Bypass the CDN cache so a fresh deploy shows up.
     const res = await fetch(`${STATUS_URL}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    render(await res.json());
+    STATUS = await res.json();
+    render();
   } catch (err) {
     $('#grid').innerHTML = `<section class="card"><p class="error">Could not read status.json — ${esc(err.message)}</p>
       <p class="muted">Run the <em>Update dashboard</em> workflow, or generate it locally:
@@ -151,7 +207,21 @@ async function load() {
 }
 
 if (typeof document !== 'undefined') {
+  const q = $('#q');
+  const only = $('#only');
+  q.value = filters.q;
+  only.checked = filters.failuresOnly;
+
+  // Filters are a view over status.json: re-render, no refetch.
+  q.oninput = () => { localStorage.setItem('ghpv.q', q.value); render(); };
+  only.onchange = () => { localStorage.setItem('ghpv.failuresOnly', only.checked ? '1' : '0'); render(); };
+  $('#clear').onclick = () => {
+    localStorage.removeItem('ghpv.q');
+    localStorage.removeItem('ghpv.failuresOnly');
+    q.value = ''; only.checked = false; render();
+  };
   $('#reload').onclick = load;
+
   load();
   setInterval(load, RELOAD_MS);
 }
