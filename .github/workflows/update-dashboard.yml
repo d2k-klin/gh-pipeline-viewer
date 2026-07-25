@@ -1,0 +1,45 @@
+name: Update dashboard
+
+on:
+  schedule:
+    # Every 5 minutes is GitHub's shortest supported interval. Note that GitHub
+    # disables scheduled workflows after 60 days without repository activity.
+    - cron: '*/5 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: node test.mjs
+
+      # PIPELINEHIVE_GITHUB_TOKEN: fine-grained PAT with Actions:read + Metadata:read
+      # on the repos you want to watch. Without it, only this repo is visible.
+      - name: Build status.json
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINEHIVE_GITHUB_TOKEN || github.token }}
+        run: node scripts/fetch-status.js
+
+      # ponytail: no build step — the repo root plus the fresh status.json *is* the site.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

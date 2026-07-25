@@ -1,0 +1,7 @@
+{
+  "_comment": "The repos on your dashboard. Edit this list, commit, and the workflow picks it up. Private repos need the token to cover them.",
+  "repos": [
+    "actions/checkout",
+    "actions/runner"
+  ]
+}

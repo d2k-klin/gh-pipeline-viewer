@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PipelineHive 🐝</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f8fa; --fg: #1f2328; --card: #fff; --line: #d1d9e0; --muted: #59636e;
+    --ok: #1a7f37; --bad: #cf222e; --run: #bf8700; --idle: #8c959f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --fg: #e6edf3; --card: #151b23; --line: #3d444d; --muted: #9198a1;
+            --ok: #3fb950; --bad: #f85149; --run: #d29922; --idle: #6e7681; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; padding: 1.5rem; max-width: 1400px; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  h1 { font-size: 1.2rem; margin: 0; }
+  #summary { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; flex: 1; font-size: .9rem; }
+  #summary .bad { color: var(--bad); font-weight: 600; }
+  button { font: inherit; padding: .3rem .7rem; border: 1px solid var(--line); border-radius: 6px;
+           background: var(--card); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  .muted, #status { color: var(--muted); font-size: .85rem; }
+  #failures { margin-bottom: 1rem; }
+  #grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+          padding: .9rem 1rem; border-left: 4px solid var(--idle); }
+  .card.success { border-left-color: var(--ok); }
+  .card.failure { border-left-color: var(--bad); }
+  .card.running, .card.queued { border-left-color: var(--run); }
+  .card h2 { font-size: .95rem; margin: 0 0 .5rem; }
+  .card h2 a { color: inherit; text-decoration: none; }
+  .card h2 a:hover { text-decoration: underline; }
+  .run { display: grid; grid-template-columns: 1.4rem 1fr; gap: 0 .4rem; padding: .35rem 0;
+         color: inherit; text-decoration: none; border-top: 1px solid var(--line); }
+  .run:hover .name { text-decoration: underline; }
+  .icon { font-size: .8rem; line-height: 1.6; }
+  .run.running .icon, .run.queued .icon { animation: pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .name { font-weight: 500; }
+  .run.failure .name { color: var(--bad); }
+  .meta { grid-column: 2; color: var(--muted); font-size: .78rem;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .error { color: var(--bad); font-size: .85rem; margin: 0 0 .4rem; }
+  code { font-size: .8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PipelineHive 🐝</h1>
+  <div id="summary"></div>
+  <span id="status"></span>
+  <button id="reload">Refresh</button>
+</header>
+
+<div id="failures"></div>
+<div id="grid"><p class="muted">Loading…</p></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
