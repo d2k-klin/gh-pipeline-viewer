@@ -1,8 +1,9 @@
 {
-  "_comment": "Your dashboard. 'branches' applies to every repo; a repo can override it. Empty list means every branch.",
+  "_comment": "Your dashboard. 'branches' and 'workflows' apply to every repo; any repo can override either. Empty list means all of them.",
   "branches": ["main", "master"],
+  "workflows": [],
   "repos": [
     "actions/checkout",
-    { "repo": "actions/runner", "branches": ["main"] }
+    { "repo": "actions/runner", "branches": ["main"], "workflows": ["Runner CI"] }
   ]
 }

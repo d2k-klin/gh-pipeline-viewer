@@ -18,16 +18,28 @@ const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
  * URLs, or { repo, branches } objects that override the top-level branches.
  */
 export function normalizeRepos(cfg) {
-  const fallback = cfg?.branches ?? [];
   const seen = new Set();
   return (cfg?.repos ?? [])
     .map((e) => (typeof e === 'string' ? { repo: e } : e ?? {}))
     .map((e) => ({
       repo: String(e.repo ?? '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/+$/, ''),
-      branches: (e.branches ?? fallback).filter(Boolean),
+      branches: (e.branches ?? cfg?.branches ?? []).filter(Boolean),
+      workflows: (e.workflows ?? cfg?.workflows ?? []).filter(Boolean),
     }))
     .filter((e) => /^[\w.-]+\/[\w.-]+$/.test(e.repo))
     .filter((e) => !seen.has(e.repo.toLowerCase()) && seen.add(e.repo.toLowerCase()));
+}
+
+/**
+ * Does this run belong to a workflow you asked for? Matches the displayed name,
+ * the workflow file name, or its full path — so "CI", "ci.yml" and
+ * ".github/workflows/ci.yml" all work. Empty list means every workflow.
+ */
+export function matchesWorkflow(run, wanted) {
+  if (!wanted?.length) return true;
+  const path = (run.path ?? '').toLowerCase();
+  const candidates = [(run.name ?? '').toLowerCase(), path, path.split('/').pop()];
+  return wanted.some((w) => candidates.includes(String(w).trim().toLowerCase()));
 }
 
 /** The one run that matters per workflow: the newest. Older runs are dropped. */
@@ -126,8 +138,9 @@ async function fetchRuns(repo, branches) {
   return lists.flat();
 }
 
-async function repoStatus({ repo, branches }) {
-  const all = await fetchRuns(repo, branches);
+async function repoStatus({ repo, branches, workflows: wanted }) {
+  // Filter first: the stats, the cards and the job requests all follow from this.
+  const all = (await fetchRuns(repo, branches)).filter((run) => matchesWorkflow(run, wanted));
   const workflows = await Promise.all(latestPerWorkflow(all).map(async (run) => {
     const state = stateOf(run);
     let stages = [];
@@ -150,7 +163,7 @@ async function repoStatus({ repo, branches }) {
       stages,
     };
   }));
-  return { repo, branches, workflows, stats: windowStats(all) };
+  return { repo, branches, selected: wanted, workflows, stats: windowStats(all) };
 }
 
 /** config.local.json (git-ignored) wins, so a private repo list stays out of git. */
@@ -178,7 +191,7 @@ async function main() {
       return await repoStatus(entry);
     } catch (err) {
       console.error(`${entry.repo}: ${err.message}`);
-      return { repo: entry.repo, branches: entry.branches, workflows: [], error: err.message };
+      return { ...entry, selected: entry.workflows, workflows: [], error: err.message };
     }
   }));
 

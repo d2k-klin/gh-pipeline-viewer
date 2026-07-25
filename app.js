@@ -78,6 +78,12 @@ function workflowRow(w) {
 
 const NOW_LABEL = { success: 'all green', failure: 'failing', running: 'running', queued: 'queued', skipped: 'skipped', neutral: 'unknown' };
 
+/** What this card is actually watching, for the "now" cell. */
+export function scope(r) {
+  const branches = (r.branches ?? []).join(', ') || 'all branches';
+  return r.selected?.length ? `${r.selected.join(', ')} · ${branches}` : branches;
+}
+
 /** The horizontal strip: failures over 24h / 7d, then the current state. */
 function statsStrip(r, state) {
   const s = r.stats;
@@ -89,15 +95,18 @@ function statsStrip(r, state) {
   return `<div class="stats" title="${s.truncated ? 'based on the newest 100 runs per branch' : ''}">
     ${cell('24h', s.day)}${cell('7d', s.week)}
     <span class="stat"><em>now</em><b>${ICON[state] || ICON.neutral} ${NOW_LABEL[state] || state}</b>
-    <i>${esc((r.branches ?? []).join(', ') || 'all branches')}</i></span>
+    <i title="${esc(scope(r))}">${esc(scope(r))}</i></span>
   </div>`;
 }
 
 function repoCard(r) {
   const state = r.error ? 'neutral' : worstState(r.workflows);
   const body = r.error ? `<p class="error">${esc(r.error)}</p>`
-    : r.workflows.length === 0 ? '<p class="muted">No workflow runs yet.</p>'
-    : r.workflows.map(workflowRow).join('');
+    : r.workflows.length > 0 ? r.workflows.map(workflowRow).join('')
+    // An empty card with filters set is nearly always a typo in the config.
+    : r.selected?.length ? `<p class="muted">No runs for ${esc(r.selected.join(', '))} on
+        ${esc((r.branches ?? []).join(', ') || 'any branch')} — check the names in your config.</p>`
+    : '<p class="muted">No workflow runs yet.</p>';
   return `<section class="card ${esc(state)}">
     <h2>${ICON[state] || ICON.neutral}
       <a href="https://github.com/${esc(r.repo)}/actions" target="_blank" rel="noopener">${esc(r.repo)}</a></h2>

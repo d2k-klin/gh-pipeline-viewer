@@ -1,28 +1,41 @@
 // Self-check for the pure helpers: node test.mjs
 import assert from 'node:assert/strict';
 import {
-  normalizeRepos, latestPerWorkflow, stateOf, failedStep, jobUrl, toStages, seconds, windowStats,
+  normalizeRepos, matchesWorkflow, latestPerWorkflow, stateOf, failedStep, jobUrl, toStages,
+  seconds, windowStats,
 } from './scripts/fetch-status.js';
-import { worstState, summarize, failures, stageTip, ago } from './app.js';
+import { worstState, summarize, failures, stageTip, scope, ago } from './app.js';
 
 // --- config ---
 
 assert.deepEqual(
   normalizeRepos({
     branches: ['main'],
-    repos: [' owner/repo ', 'https://github.com/o2/r2/', { repo: 'o3/r3', branches: ['dev', 'qa'] },
+    workflows: ['CI'],
+    repos: [' owner/repo ', 'https://github.com/o2/r2/',
+            { repo: 'o3/r3', branches: ['dev', 'qa'], workflows: ['Deploy', 'e2e.yml'] },
             'owner/REPO', 'garbage', 'a/b/c', '', null],
   }),
   [
-    { repo: 'owner/repo', branches: ['main'] },
-    { repo: 'o2/r2', branches: ['main'] },
-    { repo: 'o3/r3', branches: ['dev', 'qa'] },
+    { repo: 'owner/repo', branches: ['main'], workflows: ['CI'] },
+    { repo: 'o2/r2', branches: ['main'], workflows: ['CI'] },
+    { repo: 'o3/r3', branches: ['dev', 'qa'], workflows: ['Deploy', 'e2e.yml'] },
   ],
-  'inherits branches, per-repo override wins, drops dupes and junk',
+  'inherits branches and workflows, per-repo override wins, drops dupes and junk',
 );
-assert.deepEqual(normalizeRepos({ repos: ['a/b'] }), [{ repo: 'a/b', branches: [] }],
-  'no branches configured means every branch');
+assert.deepEqual(normalizeRepos({ repos: ['a/b'] }), [{ repo: 'a/b', branches: [], workflows: [] }],
+  'nothing configured means every branch and every workflow');
 assert.deepEqual(normalizeRepos(undefined), []);
+
+const ciRun = { name: 'CI', path: '.github/workflows/ci.yml' };
+assert.equal(matchesWorkflow(ciRun, []), true, 'no filter means everything');
+assert.equal(matchesWorkflow(ciRun, undefined), true);
+assert.equal(matchesWorkflow(ciRun, ['ci']), true, 'display name, case-insensitive');
+assert.equal(matchesWorkflow(ciRun, ['ci.yml']), true, 'workflow file name');
+assert.equal(matchesWorkflow(ciRun, ['.github/workflows/ci.yml']), true, 'full path');
+assert.equal(matchesWorkflow(ciRun, ['Deploy']), false);
+assert.equal(matchesWorkflow(ciRun, ['Deploy', 'CI']), true, 'any of the listed ones');
+assert.equal(matchesWorkflow({ name: 'CI' }, ['ci.yml']), false, 'no path, no file match');
 
 // --- runs ---
 
@@ -122,6 +135,10 @@ assert.deepEqual(
             { repo: 'x/2', workflows: [wf('failure', '2024-01-03T00:00:00Z')] }]).map((w) => w.repo),
   ['x/2', 'x/1'],
 );
+
+assert.equal(scope({ branches: ['main'], selected: ['CI'] }), 'CI · main');
+assert.equal(scope({ branches: ['main'] }), 'main');
+assert.equal(scope({}), 'all branches');
 
 const t = Date.parse('2024-01-02T12:00:00Z');
 assert.equal(ago('2024-01-02T11:59:30Z', t), '30s ago');

@@ -1,8 +1,8 @@
 # PipelineHive 🐝
 
 One page that tells you whether all your GitHub Actions are green — the latest run
-of every workflow, on the branches you care about, with each pipeline's stages as a
-row of dots you can hover and click. Every red dot links straight to the **step that
+of the workflows you pick, on the branches you care about, with each pipeline's
+stages as a row of dots you can hover and click. Every red dot links straight to the **step that
 failed** — not the repo, not the run list, the exact line of the log.
 
 ```
@@ -133,24 +133,33 @@ watch anything else.
 ```json
 {
   "branches": ["main", "master"],
+  "workflows": [],
   "repos": [
     "your-org/api",
     "https://github.com/your-org/web",
-    { "repo": "your-org/platform", "branches": ["main", "develop"] }
+    { "repo": "your-org/platform", "branches": ["main", "develop"] },
+    { "repo": "your-org/monorepo", "workflows": ["CI", "Deploy", "e2e.yml"] }
   ]
 }
 ```
 
-- **`branches`** — the branches you care about. Applies to every repo; a repo can
-  override it with its own list. Runs on any other branch (feature branches, PRs,
-  forks) are ignored, which is usually what you want on a dashboard.
-- **Omit `branches`, or use `[]`** — every branch counts, and a workflow will show
-  whichever branch ran it most recently.
-- **`repos`** — `"owner/repo"` strings, full GitHub URLs, or objects with a branch
-  override. Duplicates and malformed entries are dropped.
+- **`branches`** — the branches you care about. Runs on any other branch (feature
+  branches, PRs, forks) are ignored, which is usually what you want on a dashboard.
+- **`workflows`** — which workflows to show. Match by the name you see in the
+  Actions tab (`"CI"`), the workflow file (`"ci.yml"`), or its full path
+  (`".github/workflows/ci.yml"`) — case-insensitive. Handy for a monorepo where
+  only two of fifteen workflows matter.
+- Both apply to **every repo**, and **any repo can override either** with its own
+  list. Omit them, or use `[]`, to mean *all branches* / *all workflows*.
+- **`repos`** — `"owner/repo"` strings, full GitHub URLs, or objects with
+  overrides. Duplicates and malformed entries are dropped.
 
 Only the **newest run per workflow** is shown; previous runs are never rendered.
-They still feed the 24h / 7d failure counts.
+They still feed the 24h / 7d failure counts — which respect your filters too, so a
+`CI`-only card counts `CI` failures, not everything the repo ever ran.
+
+A card that comes up empty prints the filters it used, which is almost always how
+you spot a mistyped workflow name.
 
 Locally, put your list in **`config.local.json`** — it's git-ignored and takes
 precedence, so your private repo names never reach the public repo.
@@ -198,8 +207,8 @@ Repos sort worst-first, with a *Recent failures* roll-up above the grid.
 └──────────────┴──────────────┴────────────────┘
 ```
 
-Failed runs in the last day and the last week — across every workflow on your
-branches — then the current state and which branches are being watched. A repo that
+Failed runs in the last day and the last week — across the workflows and branches
+you selected — then the current state and the filters in force. A repo that
 fails twice a week and is green right now looks different from one that has never
 failed, and the strip is where you see that.
 
