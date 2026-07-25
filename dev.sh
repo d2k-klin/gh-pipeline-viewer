@@ -11,8 +11,29 @@
 set -eu
 
 cd "$(dirname "$0")"
-PORT="${PORT:-8000}"
 INTERVAL="${INTERVAL:-300}"
+
+# A stray server on the default port shouldn't stop the dashboard: take the next
+# free one. An explicit PORT is honoured as a hard requirement.
+if [ -n "${PORT:-}" ]; then
+  RANGE=1
+else
+  PORT=8000
+  RANGE=20
+fi
+PORT=$(python3 -c '
+import socket, sys
+start, span = int(sys.argv[1]), int(sys.argv[2])
+for port in range(start, start + span):
+    try:
+        socket.socket().bind(("127.0.0.1", port))
+    except OSError:
+        continue
+    print(port)
+    break
+else:
+    sys.exit(f"port {start} is in use — free it, or run with PORT=<other>")
+' "$PORT" "$RANGE") || exit 1
 
 # Fall back to the gh CLI's token so there is nothing to configure.
 if [ -z "${GH_TOKEN:-}" ]; then

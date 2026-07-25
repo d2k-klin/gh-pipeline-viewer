@@ -78,12 +78,16 @@ The whole dashboard, none of it published:
 ```
 
 That's it. It borrows the token from your `gh` CLI login, writes `status.json`,
-serves <http://localhost:8000>, and refreshes every 5 minutes until you Ctrl-C.
+serves <http://localhost:8000>, and refreshes every 5 minutes until you Ctrl-C. If
+8000 is taken it moves to the next free port — the URL it prints is the one to open.
 
 ```bash
 GH_TOKEN=github_pat_xxx ./dev.sh   # explicit token instead of the gh CLI's
-PORT=9000 INTERVAL=60 ./dev.sh     # different port, faster refresh
+PORT=9000 INTERVAL=60 ./dev.sh     # pinned port, faster refresh
 ```
+
+An explicit `PORT` is treated as a requirement: if it's busy the script says so
+instead of quietly using another one.
 
 Requirements: `node` 18+ and `python3` — both already on most dev machines.
 
