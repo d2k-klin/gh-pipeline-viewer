@@ -20,21 +20,33 @@ directly to the failed GitHub Actions step.
 - Open failed runs, jobs, and release pages in one click.
 
 ```
-PipelineHive 🐝     3 / 5 healthy   🟢 3  🔴 1  🟡 1        data from 2m ago
+PipelineHive                         3 / 5 healthy · updated 2m ago
 
-┌─ 🔴 Recent failures ──────────────────────────────────────────────────────┐
-│ 🔴 your-org/api — CI     🟢🟢🔴⚪   main · 83ab921 · you · 7m ago          │
-└───────────────────────────────────────────────────────────────────────────┘
+REPOSITORIES  3 of 5    SEARCH  workflow or repo…    ☐ Failures only    [ Save ]
 
-┌─ 🔴 your-org/api ──────────────────┐  ┌─ 🟢 your-org/web ─────────────────┐
-│  24H       7D        NOW           │  │  24H       7D        NOW          │
-│  🔴 1      🔴 2      🔴 failing    │  │  🟢 0      🟢 0      🟢 all green  │
-│  of 15     of 25     main          │  │  of 4      of 9      main         │
-│ ────────────────────────────────── │  │ ───────────────────────────────── │
-│ 🔴 CI        🟢🟢🔴⚪  main · 7m    │  │ 🟢 CI        🟢🟢🟢   main · 1h    │
-│ 🟢 Security  🟢🟢     main · 7m    │  │ 🟢 Deploy    🟢🟢🟢   main · 1h    │
-└────────────────────────────────────┘  └───────────────────────────────────┘
-     ↑ hover a dot for detail, click it to open that job's log
+RECENT FAILURES
+  🔴 your-org/api — CI
+     🟢 🟢 🔴 ⚪   main · 83ab921 · you · 7m ago
+
+your-org/api                                                  🔴 failing
+  24H             7D              NOW             RELEASE
+  1 failure       2 failures      failing         v1.4.0 · Jul 25, 2026
+  Selected: CI, Deploy · main
+
+  🔴 CI
+     🟢 🟢 🔴 ⚪   main · 83ab921 · you · 7m ago
+  🟢 Deploy
+     🟢 🟢 🟢      main · 17ac410 · you · 1h ago
+
+your-org/web                                                  🟢 all green
+  24H             7D              NOW             RELEASE
+  0 failures      0 failures      all green       —
+  Selected: all workflows · main
+
+  🟢 CI
+     🟢 🟢 🟢      main · 73bb102 · you · 1h ago
+
+Hover a stage dot for details; select it to open the GitHub job log.
 ```
 
 ## Choose how to run it
