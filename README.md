@@ -8,8 +8,8 @@ A zero-dependency GitHub Actions dashboard for teams that want one fast answer:
 **are the workflows and branches we care about healthy right now?**
 
 PipelineHive shows the latest selected workflow runs, job-level stage dots, 24-hour
-and 7-day failure counts, and the latest published release. Every red stage links
-directly to the failed GitHub Actions step.
+and 7-day failure counts, the latest selected build time, and the latest published
+release. Every red stage links directly to the failed GitHub Actions step.
 
 ## Why PipelineHive
 
@@ -29,8 +29,8 @@ RECENT FAILURES
      🟢 🟢 🔴 ⚪   main · 83ab921 · you · 7m ago
 
 your-org/api                                                  🔴 failing
-  24H             7D              NOW             RELEASE
-  1 failure       2 failures      failing         v1.4.0 · Jul 25, 2026
+  24H          7D           NOW          LAST BUILD          RELEASE
+  1 failure    2 failures   failing      CI · 7m ago         v1.4.0 · Jul 25, 2026
   Selected: CI, Deploy · main
 
   🔴 CI
@@ -39,8 +39,8 @@ your-org/api                                                  🔴 failing
      🟢 🟢 🟢      main · 17ac410 · you · 1h ago
 
 your-org/web                                                  🟢 all green
-  24H             7D              NOW             RELEASE
-  0 failures      0 failures      all green       —
+  24H          7D           NOW          LAST BUILD          RELEASE
+  0 failures   0 failures   all green    CI · 1h ago         —
   Selected: all workflows · main
 
   🟢 CI
@@ -258,17 +258,19 @@ Repos sort worst-first, with a *Recent failures* roll-up above the grid.
 **The stats strip** across the top of every card:
 
 ```
-┌────────────┬────────────┬────────────────┬──────────────┐
-│ 24H        │ 7D         │ NOW            │ RELEASE      │
-│ 🔴 1       │ 🔴 2       │ 🔴 failing     │ v1.4.0       │
-│ of 15 runs │ of 25 runs │ main, master   │ Jul 25, 2026 │
-└────────────┴────────────┴────────────────┴──────────────┘
+┌────────────┬────────────┬────────────┬────────────────────┬──────────────┐
+│ 24H        │ 7D         │ NOW        │ LAST BUILD         │ RELEASE      │
+│ 🔴 1       │ 🔴 2       │ 🔴 failing │ 7m ago             │ v1.4.0       │
+│ of 15 runs │ of 25 runs │ CI · main  │ CI · Jul 25, 14:32 │ Jul 25, 2026 │
+└────────────┴────────────┴────────────┴────────────────────┴──────────────┘
 ```
 
 Failed runs in the last day and the last week — across the workflows and branches
-you selected — then the current state and the filters in force. When the repository
-has a published GitHub Release, its latest stable version and publication date
-appear as a link in the final cell. A repo that
+you selected — then the current state, the filters in force, and the newest build
+within that selected scope. The build time links to its workflow run and updates
+immediately when the branch or workflow selection changes. When the repository has
+a published GitHub Release, its latest stable version and publication date appear
+as a link in the final cell. A repo that
 fails twice a week and is green right now looks different from one that has never
 failed, and the strip is where you see that.
 

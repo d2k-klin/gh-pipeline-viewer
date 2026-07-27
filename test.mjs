@@ -5,7 +5,7 @@ import {
   seconds, windowStats, releaseInfo,
 } from './scripts/fetch-status.js';
 import {
-  latestState, summarize, failures, stageTip, scope, applyFilters, configSummary,
+  latestRun, latestState, summarize, failures, stageTip, scope, applyFilters, configSummary,
   selectionFor, buildConfig, ago,
 } from './app.js';
 
@@ -128,6 +128,12 @@ const wf = (state, finished_at = '2024-01-02T00:00:00Z') => ({ name: state, stat
 
 // A repo is coloured by its most recent run, not by the worst one.
 assert.equal(
+  latestRun([wf('failure', '2024-01-01T00:00:00Z'), wf('success', '2024-01-05T00:00:00Z')]).state,
+  'success',
+  'the latest selected run also supplies the last build time',
+);
+assert.equal(latestRun([]), null);
+assert.equal(
   latestState([wf('failure', '2024-01-01T00:00:00Z'), wf('success', '2024-01-05T00:00:00Z')]),
   'success',
   'an older failing workflow no longer reddens the repo',
@@ -234,6 +240,12 @@ assert.equal(
   applyFilters(banded, { saved: { 'org/api': { branches: [], workflows: ['CI'] } } })[0].state,
   'success',
   'the newest run in the selected workflow determines repository health',
+);
+assert.equal(
+  applyFilters(banded, { saved: { 'org/api': { branches: ['main'], workflows: [] } } })[0]
+    .lastBuild.finished_at,
+  '2024-01-02T00:00:00Z',
+  'last build follows the selected workflow and branch scope',
 );
 
 assert.deepEqual(

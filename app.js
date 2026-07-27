@@ -16,15 +16,19 @@ export function stageTip(stage) {
   return bits.join(' · ');
 }
 
+/** The newest run in the selected workflow and branch scope. */
+export function latestRun(workflows) {
+  return (workflows ?? []).reduce(
+    (best, w) => (!best || new Date(w.finished_at) > new Date(best.finished_at) ? w : best), null);
+}
+
 /**
  * A repo's state is its most recent run's state: green if the last thing that ran
  * passed. Older workflows that are still red stay visible as red rows and in the
  * failures roll-up, but they no longer colour the whole repo.
  */
 export function latestState(workflows) {
-  const newest = (workflows ?? []).reduce(
-    (best, w) => (!best || new Date(w.finished_at) > new Date(best.finished_at) ? w : best), null);
-  return newest?.state ?? 'neutral';
+  return latestRun(workflows)?.state ?? 'neutral';
 }
 
 /** Headline counts: a repo is failed/running/healthy by its most recent run. */
@@ -82,6 +86,7 @@ export function applyFilters(repos, { q = '', failuresOnly = false, repositories
       return {
         ...r,
         state: r.error ? 'neutral' : latestState(selected),
+        lastBuild: latestRun(selected),
         selection: sel,
         hidden: (r.workflows ?? []).length - visible.length,
         workflows: visible,
@@ -169,6 +174,13 @@ function statsStrip(r, state) {
     ${cell('24h', s.day)}${cell('7d', s.week)}
     <span class="stat"><em>now</em><b>${ICON[state] || ICON.neutral} ${NOW_LABEL[state] || state}</b>
     <i title="${esc(scope(r))}">${esc(scope(r))}</i></span>
+    ${r.lastBuild?.finished_at ? `<span class="stat" title="${esc(new Date(r.lastBuild.finished_at).toLocaleString())}">
+      <em>last build</em>
+      <b><a href="${esc(r.lastBuild.url)}" target="_blank" rel="noopener">${esc(ago(r.lastBuild.finished_at))}</a></b>
+      <i>${esc(r.lastBuild.name)} · ${esc(new Date(r.lastBuild.finished_at).toLocaleString(undefined, {
+        dateStyle: 'medium', timeStyle: 'short',
+      }))}</i>
+    </span>` : ''}
     ${r.release ? `<span class="stat"><em>release</em>
       <b><a href="${esc(r.release.url)}" target="_blank" rel="noopener">${esc(r.release.version)}</a></b>
       <i>${esc(new Date(r.release.published_at).toLocaleDateString(undefined, { dateStyle: 'medium' }))}</i>
