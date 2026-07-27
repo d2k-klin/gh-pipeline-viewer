@@ -61,29 +61,31 @@ export function selectionFor(repo, saved = {}) {
 }
 
 /**
- * On-page filtering over whatever status.json holds. `state` is attached from the
- * unfiltered workflow list, so hiding rows never changes a repo's colour or stats.
+ * Branch/workflow selections define repository health. Search and "failures only"
+ * only narrow the visible rows, so view filters cannot recolour a repository.
  */
-export function applyFilters(repos, { q = '', failuresOnly = false, saved = {} } = {}) {
+export function applyFilters(repos, { q = '', failuresOnly = false, repositories = null, saved = {} } = {}) {
   const needle = q.trim().toLowerCase();
   return (repos ?? [])
+    .filter((r) => repositories === null || repositories.some((name) =>
+      name.toLowerCase() === r.repo.toLowerCase()))
     .map((r) => {
       const repoHit = r.repo.toLowerCase().includes(needle);
       const sel = selectionFor(r, saved);
       const pick = (list, value) => list.length === 0 || list.some((x) =>
         String(x).toLowerCase() === String(value ?? '').toLowerCase());
+      const selected = (r.workflows ?? []).filter((w) =>
+        pick(sel.branches, w.branch) && pick(sel.workflows, w.name));
+      const visible = selected.filter((w) =>
+        (!needle || repoHit || w.name.toLowerCase().includes(needle))
+        && (!failuresOnly || w.state === 'failure'));
       return {
         ...r,
-        state: r.error ? 'neutral' : latestState(r.workflows),
+        state: r.error ? 'neutral' : latestState(selected),
         selection: sel,
-        hidden: (r.workflows ?? []).length - (r.workflows ?? []).filter(keep).length,
-        workflows: (r.workflows ?? []).filter(keep),
+        hidden: (r.workflows ?? []).length - visible.length,
+        workflows: visible,
       };
-      function keep(w) {
-        return pick(sel.branches, w.branch) && pick(sel.workflows, w.name)
-          && (!needle || repoHit || w.name.toLowerCase().includes(needle))
-          && (!failuresOnly || w.state === 'failure');
-      }
     })
     .filter((r) => {
       if (failuresOnly) return r.workflows.length > 0;
@@ -167,6 +169,10 @@ function statsStrip(r, state) {
     ${cell('24h', s.day)}${cell('7d', s.week)}
     <span class="stat"><em>now</em><b>${ICON[state] || ICON.neutral} ${NOW_LABEL[state] || state}</b>
     <i title="${esc(scope(r))}">${esc(scope(r))}</i></span>
+    ${r.release ? `<span class="stat"><em>release</em>
+      <b><a href="${esc(r.release.url)}" target="_blank" rel="noopener">${esc(r.release.version)}</a></b>
+      <i>${esc(new Date(r.release.published_at).toLocaleDateString(undefined, { dateStyle: 'medium' }))}</i>
+    </span>` : ''}
   </div>`;
 }
 
@@ -182,13 +188,14 @@ function dropdown(repo, kind, options, chosen) {
   return `<details class="dd" data-dd="${esc(repo)}:${esc(kind)}">
     <summary title="${esc(label)}"><span class="dd-kind">${kind}</span> ${esc(label)}</summary>
     <div class="menu">
-      <button class="link" data-all="${esc(repo)}:${esc(kind)}">all</button>
+      <div class="menu-head"><span class="muted">Show</span>
+        <button class="link" data-all="${esc(repo)}:${esc(kind)}">Select all</button></div>
       ${items}
     </div>
   </details>`;
 }
 
-/** The per-repo horizontal band: stats, then what to show, then Save. */
+/** The per-repo horizontal band: stats, then what to show. */
 function repoBand(r, state) {
   const sel = r.selection ?? { branches: [], workflows: [] };
   const avail = r.available ?? { branches: [], workflows: [] };
@@ -197,7 +204,6 @@ function repoBand(r, state) {
     <div class="picker">
       ${dropdown(r.repo, 'branches', avail.branches, sel.branches)}
       ${dropdown(r.repo, 'workflows', avail.workflows, sel.workflows)}
-      <button data-save="${esc(r.repo)}">Save</button>
     </div>
   </div>`;
 }
@@ -224,6 +230,16 @@ let STATUS = { repos: [] };
 const filters = {
   get q() { return localStorage.getItem('ghpv.q') ?? ''; },
   get failuresOnly() { return localStorage.getItem('ghpv.failuresOnly') === '1'; },
+  get repositories() {
+    const value = localStorage.getItem('ghpv.repositories');
+    if (value === null) return null;
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  },
   get saved() { return readSaved(); },
 };
 
@@ -260,12 +276,49 @@ function selectAll(repo, kind) {
   render();
 }
 
+function setRepositories(repositories) {
+  if (repositories === null) localStorage.removeItem('ghpv.repositories');
+  else localStorage.setItem('ghpv.repositories', JSON.stringify(repositories));
+  render();
+}
+
+function toggleRepository(repo, on) {
+  const all = (STATUS.repos ?? []).map((r) => r.repo);
+  const current = filters.repositories ?? all;
+  const next = on
+    ? [...new Set([...current, repo])]
+    : current.filter((name) => name.toLowerCase() !== repo.toLowerCase());
+  setRepositories(next.length === all.length ? null : next);
+}
+
+function repositoryDropdown(repos) {
+  const chosen = filters.repositories;
+  const active = chosen ?? repos.map((r) => r.repo);
+  const label = active.length === repos.length ? 'All repositories'
+    : active.length === 0 ? 'No repositories'
+    : `${active.length} of ${repos.length} repositories`;
+  return `<details class="dd" data-repository-filter>
+    <summary><span class="dd-kind">Repositories</span>${esc(label)}</summary>
+    <div class="menu">
+      <div class="menu-head">
+        <button class="link" data-repositories="all">Select all</button>
+        <button class="link" data-repositories="none">Clear</button>
+      </div>
+      ${repos.map((r) => `<label title="${esc(r.repo)}">
+        <input type="checkbox" data-view-repo="${esc(r.repo)}"
+          ${active.some((name) => name.toLowerCase() === r.repo.toLowerCase()) ? 'checked' : ''}>
+        ${esc(r.repo)}
+      </label>`).join('')}
+    </div>
+  </details>`;
+}
+
 /**
  * Persist to config.local.json via the local dev server, so the next fetch
  * collects exactly this. On GitHub Pages there is nothing to write to — the
  * selection still persists in this browser.
  */
-async function save(repo, button) {
+async function save(button) {
   const body = JSON.stringify(buildConfig(STATUS.repos, readSaved()), null, 2);
   button.disabled = true;
   try {
@@ -277,16 +330,22 @@ async function save(repo, button) {
   } catch {
     button.textContent = 'saved in browser';
   }
-  setTimeout(() => { button.textContent = 'Save'; button.disabled = false; render(); }, 2500);
+  setTimeout(() => { button.textContent = 'Save'; button.disabled = false; }, 2500);
 }
 
 function render() {
   const all = STATUS.repos ?? [];
-  // Counts describe the whole fleet, never just the filtered slice.
-  const c = summarize(all);
-  const shown = applyFilters(all, { q: filters.q, failuresOnly: filters.failuresOnly, saved: filters.saved })
+  // Counts describe the selected scope across the whole fleet, not text/view filters.
+  const c = summarize(applyFilters(all, { saved: filters.saved }));
+  const repoMenuOpen = $('#repo-filter details')?.open;
+  const shown = applyFilters(all, {
+    q: filters.q, failuresOnly: filters.failuresOnly,
+    repositories: filters.repositories, saved: filters.saved,
+  })
     .sort((a, b) => RANK[a.state] - RANK[b.state] || a.repo.localeCompare(b.repo));
 
+  $('#repo-filter').innerHTML = repositoryDropdown(all);
+  $('#repo-filter details').open = repoMenuOpen;
   $('#summary').innerHTML = `
     <strong>${c.healthy} / ${all.length} healthy</strong>
     <span>🟢 ${c.healthy}</span>${c.failed ? `<span class="bad">🔴 ${c.failed}</span>` : ''}
@@ -338,9 +397,21 @@ if (typeof document !== 'undefined') {
   $('#clear').onclick = () => {
     localStorage.removeItem('ghpv.q');
     localStorage.removeItem('ghpv.failuresOnly');
+    localStorage.removeItem('ghpv.repositories');
     q.value = ''; only.checked = false; render();
   };
   $('#reload').onclick = load;
+  $('#save').onclick = (e) => save(e.currentTarget);
+
+  $('#repo-filter').addEventListener('change', (e) => {
+    const box = e.target.closest('[data-view-repo]');
+    if (box) toggleRepository(box.dataset.viewRepo, box.checked);
+  });
+  $('#repo-filter').addEventListener('click', (e) => {
+    const action = e.target.closest('[data-repositories]')?.dataset.repositories;
+    if (action === 'all') setRepositories(null);
+    if (action === 'none') setRepositories([]);
+  });
 
   // One delegated pair of listeners: the grid is re-rendered constantly.
   $('#grid').addEventListener('change', (e) => {
@@ -350,8 +421,6 @@ if (typeof document !== 'undefined') {
   $('#grid').addEventListener('click', (e) => {
     const all = e.target.closest('[data-all]');
     if (all) return selectAll(...all.dataset.all.split(':'));
-    const btn = e.target.closest('[data-save]');
-    if (btn) return save(btn.dataset.save, btn);
   });
 
   load();

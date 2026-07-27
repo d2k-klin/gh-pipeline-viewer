@@ -110,6 +110,16 @@ export function toStages(jobs) {
   });
 }
 
+/** GitHub's latest published release -> the small dashboard payload. */
+export function releaseInfo(release) {
+  if (!release?.tag_name || !release.published_at || !release.html_url) return null;
+  return {
+    version: release.tag_name,
+    published_at: release.published_at,
+    url: release.html_url,
+  };
+}
+
 // ---------- api ----------
 
 async function gh(path) {
@@ -179,10 +189,15 @@ async function repoStatus({ repo, branches, workflows: wanted }) {
       stages,
     };
   }));
+  const [availableOptions, release] = await Promise.all([
+    available(repo),
+    gh(`/repos/${repo}/releases/latest`).then(releaseInfo).catch(() => null),
+  ]);
   return {
     repo, branches, selected: wanted, workflows,
     stats: windowStats(all),
-    available: await available(repo),
+    available: availableOptions,
+    release,
   };
 }
 

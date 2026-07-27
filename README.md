@@ -194,10 +194,11 @@ So:
 
 ## Reading the dashboard
 
-**A repo's colour is its most recent run.** Green means the last thing that ran
-passed — the "did I just break something" question. A workflow that failed days ago
-and hasn't run since does *not* redden the repo; it stays a red row in the card and
-in the *Recent failures* list, where you can still see it.
+**A repo's colour is its most recent run within the selected branches and
+workflows.** Green means the last selected thing that ran passed — the "did I just
+break something" question. A selected workflow that failed days ago and hasn't run
+since does *not* redden the repo when a newer selected run passed; it stays a red
+row in the card and in the *Recent failures* list, where you can still see it.
 
 | | Meaning (repo card) |
 | --- | --- |
@@ -214,15 +215,17 @@ Repos sort worst-first, with a *Recent failures* roll-up above the grid.
 **The stats strip** across the top of every card:
 
 ```
-┌──────────────┬──────────────┬────────────────┐
-│ 24H          │ 7D           │ NOW            │
-│ 🔴 1         │ 🔴 2         │ 🔴 failing     │
-│ of 15 runs   │ of 25 runs   │ main, master   │
-└──────────────┴──────────────┴────────────────┘
+┌────────────┬────────────┬────────────────┬──────────────┐
+│ 24H        │ 7D         │ NOW            │ RELEASE      │
+│ 🔴 1       │ 🔴 2       │ 🔴 failing     │ v1.4.0       │
+│ of 15 runs │ of 25 runs │ main, master   │ Jul 25, 2026 │
+└────────────┴────────────┴────────────────┴──────────────┘
 ```
 
 Failed runs in the last day and the last week — across the workflows and branches
-you selected — then the current state and the filters in force. A repo that
+you selected — then the current state and the filters in force. When the repository
+has a published GitHub Release, its latest stable version and publication date
+appear as a link in the final cell. A repo that
 fails twice a week and is green right now looks different from one that has never
 failed, and the strip is where you see that.
 
@@ -245,21 +248,37 @@ The repo name links to its Actions tab.
 
 ## Choosing what you see, from the page
 
-Every repo gets a horizontal band with its stats and its own two dropdowns:
+The top bar has one repository dropdown with checkboxes, so you can keep the page
+focused on just the repositories you care about:
 
 ```
-┌─ 🟢 your-org/api ─────────────────────────────────────────────────────────────┐
-│  24H      7D       NOW          ┌ BRANCHES  main ▾ ┐ ┌ WORKFLOWS  CI ▾ ┐ Save │
-│  🟢 0     🔴 2     🟢 all green  │ ☑ main           │ │ all             │      │
-│  of 4     of 19    CI · main    │ ☐ develop        │ │ ☑ CI            │      │
-│                                 │ ☐ release/2.1    │ │ ☐ Deploy        │      │
-└─────────────────────────────────┴──────────────────┴─┴─────────────────┴──────┘
+┌ REPOSITORIES  4 of 18 repositories ▾ ┐  [ Search… ]  ☐ Failures only  [ Save ]
+│ ☑ your-org/api                       │
+│ ☑ your-org/web                       │
+│ ☐ your-org/old-service               │
+└──────────────────────────────────────┘
+```
+
+That choice is a browser view preference: hiding a repository does not remove it
+from the underlying configuration, so it is always available to select again.
+
+Every visible repo also gets a horizontal band with its stats and its own branch
+and workflow dropdowns:
+
+```
+┌─ 🟢 your-org/api ────────────────────────────────────────────────────────┐
+│  24H      7D       NOW          ┌ BRANCHES  main ▾ ┐ ┌ WORKFLOWS  CI ▾ ┐ │
+│  🟢 0     🔴 2     🟢 all green  │ ☑ main           │ │ all             │ │
+│  of 4     of 19    CI · main    │ ☐ develop        │ │ ☑ CI            │ │
+│                                 │ ☐ release/2.1    │ │ ☐ Deploy        │ │
+└─────────────────────────────────┴──────────────────┴─┴─────────────────┴─┘
 ```
 
 Tick the branches and workflows you want; the view updates as you tick. Nothing
-checked means *everything*, and the **all** link in each dropdown resets to that.
+checked means *everything*, and **Select all** in each dropdown resets to that.
 
-**Save** writes your choices to `config.local.json` — a git-ignored file, so it
+The single **Save** button in the top bar writes all branch and workflow choices to
+`config.local.json` — a git-ignored file, so it
 never reaches the repo and survives across runs. It's the same format the fetcher
 reads, so from the next refresh onward it stops collecting what you don't look at.
 Saving needs the local dev server ([`scripts/serve.py`](scripts/serve.py), which
@@ -276,13 +295,13 @@ Three layers, and it's worth knowing which one you want:
 | | Where | What it does |
 | --- | --- | --- |
 | **Collection** | `config.json` / `config.local.json` | Decides what the fetcher even asks GitHub for. Fewer API calls, smaller `status.json`. |
-| **Per repo** | the band's dropdowns, then **Save** | Picks branches and workflows for one repo. Instant in the view; written to `config.local.json` so collection follows. |
-| **View** | the filter bar at the top | Narrows what's displayed right now, across all repos. Instant, nothing persisted but the box itself. |
+| **Per repo** | the band's dropdowns, then the single top **Save** | Picks branches and workflows for each repo. Instant in the view; written to `config.local.json` so collection follows. |
+| **View** | the filter bar at the top | Narrows what's displayed by repository, text, or failure state. The choices persist in this browser. |
 
-The filter bar gives you a search box (matches repo names *and* workflow names) and
-a **failures only** toggle. Both persist in your browser, and the current collection
-filters are printed on the right of the bar so the page always tells you what it is
-watching:
+The filter bar gives you the repository picker, a search box (matches repo names
+*and* workflow names), and a **failures only** toggle. They persist in your browser,
+and the current collection filters are printed below the bar so the page always
+tells you what it is watching:
 
 ```
 [ terraform            ]  ☐ failures only  [Clear]     branches: main, master · workflows: all

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   normalizeRepos, matchesWorkflow, latestPerWorkflow, stateOf, failedStep, jobUrl, toStages,
-  seconds, windowStats,
+  seconds, windowStats, releaseInfo,
 } from './scripts/fetch-status.js';
 import {
   latestState, summarize, failures, stageTip, scope, applyFilters, configSummary,
@@ -111,6 +111,17 @@ assert.equal(seconds(null, '2024-01-01T00:00:45Z'), null, 'a queued job has no d
 assert.equal(stageTip(toStages([job])[0]), 'build · failure · failed at: npm test · 3m');
 assert.equal(stageTip({ name: 'lint', state: 'success', duration: 12 }), 'lint · success · 12s');
 
+assert.deepEqual(releaseInfo({
+  tag_name: 'v1.4.0',
+  published_at: '2026-07-25T10:30:00Z',
+  html_url: 'https://github.com/o/r/releases/tag/v1.4.0',
+}), {
+  version: 'v1.4.0',
+  published_at: '2026-07-25T10:30:00Z',
+  url: 'https://github.com/o/r/releases/tag/v1.4.0',
+});
+assert.equal(releaseInfo({}), null);
+
 // --- roll-ups ---
 
 const wf = (state, finished_at = '2024-01-02T00:00:00Z') => ({ name: state, state, finished_at });
@@ -161,6 +172,13 @@ assert.deepEqual(applyFilters(fleet, { q: 'deploy' }).map((r) => [r.repo, r.work
 assert.deepEqual(applyFilters(fleet, { failuresOnly: true }).map((r) => [r.repo, r.workflows.map((w) => w.name)]),
   [['org/api', ['CI']]], 'failures only drops green repos and green rows');
 assert.deepEqual(applyFilters(fleet, { q: 'nothing-matches' }), []);
+assert.deepEqual(
+  applyFilters(fleet, { repositories: ['org/web', 'other/tool'] }).map((r) => r.repo),
+  ['org/web', 'other/tool'],
+  'the top repository picker limits the visible repositories',
+);
+assert.deepEqual(applyFilters(fleet, { repositories: [] }), [],
+  'clearing the repository picker shows none');
 assert.equal(applyFilters(fleet, { failuresOnly: true })[0].state, 'failure',
   'state comes from the unfiltered list, so filtering cannot recolour a card');
 assert.deepEqual(applyFilters(undefined, {}), []);
@@ -209,8 +227,13 @@ assert.deepEqual(
 );
 assert.equal(
   applyFilters(banded, { saved: { 'org/api': { branches: ['main'], workflows: [] } } })[0].state,
-  'failure',
-  'a selection cannot recolour the repo: state still comes from every run',
+  'success',
+  'the newest run in the selected branch determines repository health',
+);
+assert.equal(
+  applyFilters(banded, { saved: { 'org/api': { branches: [], workflows: ['CI'] } } })[0].state,
+  'success',
+  'the newest run in the selected workflow determines repository health',
 );
 
 assert.deepEqual(

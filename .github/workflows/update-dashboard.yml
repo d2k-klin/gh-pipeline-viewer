@@ -25,7 +25,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
       - run: node test.mjs
 
@@ -37,7 +40,7 @@ jobs:
         run: node scripts/fetch-status.js
 
       # ponytail: no build step — the repo root plus the fresh status.json *is* the site.
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: .
 
