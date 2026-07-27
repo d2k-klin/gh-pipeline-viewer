@@ -161,9 +161,10 @@ Without the secret the workflow falls back to the automatic `GITHUB_TOKEN`, whic
 can only see this repository — enough to prove the pipeline works, not enough to
 watch anything else.
 
-> **In this repository the *Update dashboard* workflow is disabled**, because the
-> reference dashboard runs in private mode. Enable it in the Actions tab (or
-> `gh workflow enable "Update dashboard"`) once Pages is set up in your fork.
+The reference deployment is live at
+[d2k-klin.github.io/gh-pipeline-viewer](https://d2k-klin.github.io/gh-pipeline-viewer/).
+If a fork reports that the Pages site was not found, enable **Settings → Pages →
+Build and deployment → GitHub Actions**, then rerun *Update dashboard*.
 
 ### Host it for a GitHub organization
 
