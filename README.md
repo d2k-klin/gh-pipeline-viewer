@@ -1,9 +1,23 @@
 # PipelineHive 🐝
 
-One page that tells you whether all your GitHub Actions are green — the latest run
-of the workflows you pick, on the branches you care about, with each pipeline's
-stages as a row of dots you can hover and click. Every red dot links straight to the **step that
-failed** — not the repo, not the run list, the exact line of the log.
+[![Update dashboard](https://github.com/d2k-klin/gh-pipeline-viewer/actions/workflows/update-dashboard.yml/badge.svg)](https://github.com/d2k-klin/gh-pipeline-viewer/actions/workflows/update-dashboard.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![No dependencies](https://img.shields.io/badge/dependencies-0-42d392.svg)](scripts/fetch-status.js)
+
+A zero-dependency GitHub Actions dashboard for teams that want one fast answer:
+**are the workflows and branches we care about healthy right now?**
+
+PipelineHive shows the latest selected workflow runs, job-level stage dots, 24-hour
+and 7-day failure counts, and the latest published release. Every red stage links
+directly to the failed GitHub Actions step.
+
+## Why PipelineHive
+
+- Monitor many repositories without opening every Actions tab.
+- Choose repositories, branches, and workflows from the dashboard.
+- Run privately on your machine or publish as a static GitHub Pages site.
+- Keep GitHub tokens out of the browser and use no runtime dependencies.
+- Open failed runs, jobs, and release pages in one click.
 
 ```
 PipelineHive 🐝     3 / 5 healthy   🟢 3  🔴 1  🟡 1        data from 2m ago
@@ -23,12 +37,15 @@ PipelineHive 🐝     3 / 5 healthy   🟢 3  🔴 1  🟡 1        data from 2m
      ↑ hover a dot for detail, click it to open that job's log
 ```
 
-Two ways to run it, same code:
+## Choose how to run it
 
-- **Private, on your machine** — `./dev.sh`. Nothing is published; works with private
-  repos; no hosting at all. Start here if any repo you watch is private.
-- **Public, on GitHub Pages** — a scheduled workflow deploys it automatically.
-  Great for an open-source project's status page.
+| Mode | Best for | Start |
+| --- | --- | --- |
+| Local private dashboard | Private repositories and personal use | `./dev.sh` |
+| Project Pages site | A dashboard at `https://<owner>.github.io/<repo>/` | [Public mode](#public-mode--deploy-to-github-pages) |
+| Organization Pages site | A shared dashboard owned by a GitHub organization | [Organization hosting guide](docs/organization-pages.md) |
+
+The same static application is used in every mode.
 
 ## How it works
 
@@ -114,12 +131,13 @@ GitHub Actions**.
 **3. Pick your repositories and branches** — edit [`config.json`](config.json) and
 commit. See [Configuration](#configuration) below.
 
-**4. Add a token if you want private repos** (skip for public-only dashboards).
+**4. Add a token when monitoring repositories other than the dashboard repo.**
 Create a **fine-grained personal access token** — GitHub → Settings → Developer
 settings → Personal access tokens → Fine-grained:
 
 - **Repository access:** only the repos on your dashboard
-- **Permissions:** `Actions: Read-only` and `Metadata: Read-only` — nothing else
+- **Permissions:** `Actions: Read-only`, `Contents: Read-only`, and the automatic
+  `Metadata: Read-only` permission
 
 Save it in **this** repo under **Settings → Secrets and variables → Actions → New
 repository secret**, named `PIPELINEHIVE_GITHUB_TOKEN`.
@@ -134,6 +152,21 @@ watch anything else.
 > **In this repository the *Update dashboard* workflow is disabled**, because the
 > reference dashboard runs in private mode. Enable it in the Actions tab (or
 > `gh workflow enable "Update dashboard"`) once Pages is set up in your fork.
+
+### Host it for a GitHub organization
+
+An organization can host PipelineHive in either form:
+
+- **Project site (recommended):** create `<org>/pipelinehive`; the URL is
+  `https://<org>.github.io/pipelinehive/`.
+- **Organization root site:** create or use the special repository
+  `<org>/<org>.github.io`; the URL is `https://<org>.github.io/`. GitHub allows only
+  one root Pages site per organization, so use this only when PipelineHive should
+  be the organization's main site.
+
+Both use the included workflow. Organization owners may need to allow Pages
+publication and approve the fine-grained token used to read private organization
+repositories. Follow the complete [organization Pages hosting guide](docs/organization-pages.md).
 
 ## Configuration
 
@@ -171,13 +204,11 @@ you spot a mistyped workflow name.
 Locally, put your list in **`config.local.json`** — it's git-ignored and takes
 precedence, so your private repo names never reach the public repo.
 
-## Read this before putting private repos on a public page
+## Read this before putting private repos on a hosted page
 
-**A GitHub Pages site is always publicly accessible.** Restricting a Pages site to
-people with repo access is a **GitHub Enterprise Cloud** feature; on Free and Pro
-there is no way to do it. Making the repo private does not help — on Free, Pages
-from a private repo isn't available at all, and on Pro the site builds but the URL
-stays public.
+**A GitHub Pages site is public unless your organization uses GitHub Enterprise
+Cloud and explicitly configures private Pages visibility.** Making the source
+repository private does not by itself make the published site private.
 
 The token is never at risk either way: it lives in Actions secrets and only ever
 runs server-side. `status.json` is the exposure. Published to a public Pages site
@@ -322,8 +353,9 @@ many of its rows the filter hid.
   activity. It emails you first; a manual run re-enables them.
 - **Browser re-read interval** — `RELOAD_MS` in [`app.js`](app.js).
 - **API budget** — per repo: one request per watched branch, one per workflow shown
-  (its jobs are the dots), and two for the dropdown options. Roughly
-  `repos × (branches + workflows + 2)`. With a token you get 5,000 requests/hour, so
+  (its jobs are the dots), two for the dropdown options, and one for the latest
+  release. Roughly `repos × (branches + workflows + 3)`. With a token you get 5,000
+  requests/hour, so
   ~20 repos on one branch refreshing every 5 minutes sits around 2,000/hour. Narrowing
   the bands and saving is the cheapest way to cut it — that's the point of Save.
 - **Stats depth** — the 24h/7d counts come from the newest 100 runs per branch. On a
@@ -342,12 +374,15 @@ Nothing to install, nothing to build; `python3 -m http.server` is enough to prev
 
 ## Contributing
 
-Issues and pull requests welcome. Two house rules: **no dependencies** and **no
-build step**. The whole point is that this stays a page you can read in one sitting.
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before
+starting. Two design constraints are intentional: **no dependencies** and **no build
+step**. The whole application should remain understandable in one sitting.
 
 Obvious next steps if you want them: aggregating Dependabot alerts, CodeQL, open
 PRs and deployments into the same health view, or a webhook-driven variant for
 real-time updates instead of a 5-minute cron.
+
+Security issues should be reported privately; see [SECURITY.md](SECURITY.md).
 
 ## License
 

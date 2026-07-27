@@ -1,0 +1,46 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve PipelineHive. Remove tokens and private repository data before submitting.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      placeholder: |
+        1. Configure…
+        2. Run…
+        3. See…
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Deployment mode
+      options:
+        - Local private mode
+        - GitHub Pages project site
+        - GitHub Pages organization site
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Firefox 130, Chrome 128, Safari 18
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant sanitized output
+      description: Paste workflow or console output with secrets and private identifiers removed.
+      render: shell
