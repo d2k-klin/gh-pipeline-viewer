@@ -97,6 +97,16 @@ The token can read private repositories, but the generated `status.json` contain
 repository names, branches, commit SHAs, authors, workflow results, and release
 metadata. A public Pages site exposes that information.
 
-Private Pages visibility requires GitHub Enterprise Cloud and must be configured
-explicitly. Otherwise use local private mode (`./dev.sh`) or place the static site
-behind an authentication layer.
+Organization ownership does **not** make a Pages site private. Private Pages
+requires all of the following:
+
+- The organization uses GitHub Enterprise Cloud.
+- PipelineHive is a **project site** in an organization-owned private or internal
+  repository. Access control is not available for the organization root
+  `<org>.github.io` site.
+- **Settings → Pages → Visibility** is explicitly set to **Private**.
+
+A privately published site is available to people with read access to its
+repository, not automatically to every organization member. Grant repository read
+access to the intended organization users or team. Otherwise use local private
+mode (`./dev.sh`) or place the static site behind an authentication layer.

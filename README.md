@@ -161,10 +161,9 @@ Without the secret the workflow falls back to the automatic `GITHUB_TOKEN`, whic
 can only see this repository — enough to prove the pipeline works, not enough to
 watch anything else.
 
-The reference deployment is live at
-[d2k-klin.github.io/gh-pipeline-viewer](https://d2k-klin.github.io/gh-pipeline-viewer/).
-If a fork reports that the Pages site was not found, enable **Settings → Pages →
-Build and deployment → GitHub Actions**, then rerun *Update dashboard*.
+Pages is intentionally not enabled for this reference repository. Enable it in a
+fork only for a public dashboard, or in an eligible GitHub Enterprise Cloud
+organization after setting the Pages visibility to **Private**.
 
 ### Host it for a GitHub organization
 
