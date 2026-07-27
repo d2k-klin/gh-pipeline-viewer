@@ -169,6 +169,8 @@
     .switch { order: 3; }
     #clear { order: 4; }
     #save { order: 5; margin-left: auto; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    .stat:nth-child(odd) { border-left: 0; padding-left: 0; }
     .picker { width: 100%; }
     .picker .dd { flex: 1 1 10rem; }
     .picker .dd > summary { max-width: none; }
