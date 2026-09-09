@@ -133,11 +133,11 @@ export function ago(iso, now = Date.now()) {
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const ICON = { success: '🟢', failure: '🔴', running: '🟡', queued: '🟡', neutral: '⚪️' };
+const ICON = { success: '✓', failure: '×', running: '·', queued: '·', neutral: '−', skipped: '−' };
 
 /** The horizontal dots: one per pipeline stage, hover for detail, click to open it. */
 function stageDots(stages) {
-  if (!stages?.length) return '';
+  if (!stages?.length) return '<span class="stages" aria-label="No job stages"></span>';
   return `<span class="stages">${stages.map((s) => `<a class="dot ${esc(s.state)}"
     href="${esc(s.url)}" target="_blank" rel="noopener"
     title="${esc(stageTip(s))}" aria-label="${esc(stageTip(s))}"></a>`).join('')}</span>`;
@@ -146,15 +146,15 @@ function stageDots(stages) {
 function workflowRow(w) {
   const meta = [w.branch, w.sha, w.author, w.finished_at && ago(w.finished_at)].filter(Boolean);
   return `<div class="run ${esc(w.state)}">
-    <span class="icon">${ICON[w.state] || ICON.neutral}</span>
+    <span class="icon" role="img" aria-label="${esc(w.state)}">${ICON[w.state] || ICON.neutral}</span>
     <a class="name" href="${esc(w.url)}" target="_blank" rel="noopener"
        title="${esc(w.message || '')}">${esc(w.name)}</a>
     ${stageDots(w.stages)}
-    <span class="meta">${esc(meta.join(' · '))}</span>
+    <span class="meta" title="${esc(meta.join(' · '))}">${esc(meta.join(' · '))}</span>
   </div>`;
 }
 
-const NOW_LABEL = { success: 'all green', failure: 'failing', running: 'running', queued: 'queued', skipped: 'skipped', neutral: 'unknown' };
+const NOW_LABEL = { success: 'Healthy', failure: 'Failing', running: 'Running', queued: 'Queued', skipped: 'Skipped', neutral: 'Unknown' };
 
 /** What this card is actually watching, for the "now" cell. */
 export function scope(r) {
@@ -168,21 +168,21 @@ function statsStrip(r, state) {
   if (!s) return '';
   const cell = (label, w) => `<span class="stat">
     <em>${label}</em>
-    <b class="${w.failures ? 'bad' : ''}">${w.failures ? `🔴 ${w.failures}` : '🟢 0'}</b>
+    <b class="${w.failures ? 'bad' : ''}">${w.failures}</b>
     <i>of ${w.runs} run${w.runs === 1 ? '' : 's'}</i></span>`;
   return `<div class="stats" title="${s.truncated ? 'based on the newest 100 runs per branch' : ''}">
-    ${cell('24h', s.day)}${cell('7d', s.week)}
-    <span class="stat"><em>now</em><b>${ICON[state] || ICON.neutral} ${NOW_LABEL[state] || state}</b>
+    ${cell('Failures · 24h', s.day)}${cell('Failures · 7d', s.week)}
+    <span class="stat"><em>Latest run</em><b>${NOW_LABEL[state] || state}</b>
     <i title="${esc(scope(r))}">${esc(scope(r))}</i></span>
     ${r.lastBuild?.finished_at ? `<span class="stat" title="${esc(new Date(r.lastBuild.finished_at).toLocaleString())}">
       <em>last build</em>
       <b><a href="${esc(r.lastBuild.url)}" target="_blank" rel="noopener">${esc(ago(r.lastBuild.finished_at))}</a></b>
-      <i>${esc(r.lastBuild.name)} · ${esc(new Date(r.lastBuild.finished_at).toLocaleString(undefined, {
+      <i title="${esc(r.lastBuild.name)}">${esc(r.lastBuild.name)} · ${esc(new Date(r.lastBuild.finished_at).toLocaleString(undefined, {
         dateStyle: 'medium', timeStyle: 'short',
       }))}</i>
     </span>` : ''}
     ${r.release ? `<span class="stat"><em>release</em>
-      <b><a href="${esc(r.release.url)}" target="_blank" rel="noopener">${esc(r.release.version)}</a></b>
+      <b><a title="${esc(r.release.version)}" href="${esc(r.release.url)}" target="_blank" rel="noopener">${esc(r.release.version)}</a></b>
       <i>${esc(new Date(r.release.published_at).toLocaleDateString(undefined, { dateStyle: 'medium' }))}</i>
     </span>` : ''}
   </div>`;
@@ -198,7 +198,7 @@ function dropdown(repo, kind, options, chosen) {
         ${chosen.some((c) => c.toLowerCase() === name.toLowerCase()) ? 'checked' : ''}>
         ${esc(name)}</label>`).join('');
   return `<details class="dd" data-dd="${esc(repo)}:${esc(kind)}">
-    <summary title="${esc(label)}"><span class="dd-kind">${kind}</span> ${esc(label)}</summary>
+    <summary title="${esc(label)}"><span class="dd-kind">${kind}</span><span class="dd-value">${esc(label)}</span></summary>
     <div class="menu">
       <div class="menu-head"><span class="muted">Show</span>
         <button class="link" data-all="${esc(repo)}:${esc(kind)}">Select all</button></div>
@@ -230,8 +230,9 @@ function repoCard(r) {
         ${esc((r.branches ?? []).join(', ') || 'any branch')} — check the names in your config.</p>`
     : `<p class="muted">No workflow runs yet.</p>${hidden}`;
   return `<section class="card ${esc(state)}">
-    <h2>${ICON[state] || ICON.neutral}
-      <a href="https://github.com/${esc(r.repo)}/actions" target="_blank" rel="noopener">${esc(r.repo)}</a></h2>
+    <div class="repo-heading"><h2>
+      <a href="https://github.com/${esc(r.repo)}/actions" target="_blank" rel="noopener"><span class="repo-owner">${esc(r.repo.split('/')[0])} / </span>${esc(r.repo.split('/').slice(1).join('/'))}</a></h2>
+      <span class="state-badge ${esc(state)}"><span class="state-dot ${esc(state)}" aria-hidden="true"></span>${esc(r.error ? 'Unavailable' : NOW_LABEL[state] || state)}</span></div>
     ${repoBand(r, state)}
     ${body}
   </section>`;
@@ -310,7 +311,7 @@ function repositoryDropdown(repos) {
     : active.length === 0 ? 'No repositories'
     : `${active.length} of ${repos.length} repositories`;
   return `<details class="dd" data-repository-filter>
-    <summary><span class="dd-kind">Repositories</span>${esc(label)}</summary>
+    <summary><span class="dd-kind">Repositories</span><span class="dd-value">${esc(label)}</span></summary>
     <div class="menu">
       <div class="menu-head">
         <button class="link" data-repositories="all">Select all</button>
@@ -346,6 +347,10 @@ async function save(button) {
 }
 
 function render() {
+  const focused = document.activeElement;
+  const focusKey = focused?.matches('.dd input, .dd button, .dd summary')
+    ? { selector: focused.tagName.toLowerCase(), data: JSON.stringify(focused.dataset), value: focused.value,
+        menu: focused.closest('details')?.dataset.dd } : null;
   const all = STATUS.repos ?? [];
   // Counts describe the selected scope across the whole fleet, not text/view filters.
   const c = summarize(applyFilters(all, { saved: filters.saved }));
@@ -358,32 +363,43 @@ function render() {
 
   $('#repo-filter').innerHTML = repositoryDropdown(all);
   $('#repo-filter details').open = repoMenuOpen;
-  $('#summary').innerHTML = `
-    <strong>${c.healthy} / ${all.length} healthy</strong>
-    <span>🟢 ${c.healthy}</span>${c.failed ? `<span class="bad">🔴 ${c.failed}</span>` : ''}
-    ${c.running ? `<span>🟡 ${c.running}</span>` : ''}${c.unknown ? `<span>⚪️ ${c.unknown}</span>` : ''}
-    ${shown.length === all.length ? '' : `<span class="muted">showing ${shown.length} of ${all.length}</span>`}`;
-
+  $('#summary').innerHTML = [
+    ['Repositories', all.length, ''], ['Healthy', c.healthy, 'success'],
+    ['Failing', c.failed, 'failure'], ['Running', c.running, 'running'], ['Unknown', c.unknown, 'neutral'],
+  ].map(([label, count, state]) => `<div class="health-count"><strong>${count}</strong><span>
+    ${state ? `<span class="state-dot ${state}" aria-hidden="true"></span>` : ''}${label}</span></div>`).join('');
+  $('#visible-count').textContent = `Showing ${shown.length} of ${all.length} repositories`;
   $('#config').textContent = configSummary(all);
 
   const bad = failures(shown);
-  $('#failures').innerHTML = bad.length === 0 ? '' : `<section class="card failure">
-    <h2>🔴 Recent failures</h2>
-    ${bad.map((w) => workflowRow({ ...w, name: `${w.repo} — ${w.name}` })).join('')}
-  </section>`;
+  const failuresOpen = $('#failures details')?.open ?? true;
+  $('#failures').innerHTML = bad.length === 0 ? '' : `<details class="failure-list" ${failuresOpen ? 'open' : ''}>
+    <summary><span class="state-dot failure" aria-hidden="true"></span><strong>Recent failures</strong>
+      <span class="failure-count">${bad.length}</span><span class="failure-hint">Latest failed workflows in this view</span></summary>
+    <div class="failure-runs">${bad.map((w) => workflowRow({ ...w, name: `${w.repo} / ${w.name}` })).join('')}</div>
+  </details>`;
 
   // Keep open dropdowns open across the re-render that ticking a box triggers.
   const open = new Set([...document.querySelectorAll('#grid details[open]')].map((d) => d.dataset.dd));
   $('#grid').innerHTML = shown.length === 0
-    ? '<p class="muted">Nothing matches the filter.</p>'
+    ? `<div class="empty-state"><h3>${all.length ? 'No matching repositories' : 'No repositories configured'}</h3><p class="muted">${all.length ? 'Try a different search or clear your filters.' : 'Add repositories to your configuration to start monitoring workflows.'}</p></div>`
     : shown.map(repoCard).join('');
   for (const d of document.querySelectorAll('#grid details')) d.open = open.has(d.dataset.dd);
+  if (focusKey) {
+    const replacement = [...document.querySelectorAll(`.dd ${focusKey.selector}`)].find((el) =>
+      JSON.stringify(el.dataset) === focusKey.data && el.value === focusKey.value
+      && el.closest('details')?.dataset.dd === focusKey.menu);
+    replacement?.focus({ preventScroll: true });
+  }
   $('#status').textContent = STATUS.generated_at
-    ? `data from ${ago(STATUS.generated_at)} (${new Date(STATUS.generated_at).toLocaleTimeString()})`
+    ? `Updated ${ago(STATUS.generated_at)}`
     : '';
 }
 
 async function load() {
+  const reload = $('#reload');
+  if (reload.disabled) return;
+  reload.disabled = true;
   try {
     // Bypass the CDN cache so a fresh deploy shows up.
     const res = await fetch(`${STATUS_URL}?t=${Date.now()}`, { cache: 'no-store' });
@@ -394,6 +410,9 @@ async function load() {
     $('#grid').innerHTML = `<section class="card"><p class="error">Could not read status.json — ${esc(err.message)}</p>
       <p class="muted">Run the <em>Update dashboard</em> workflow, or generate it locally:
       <code>GH_TOKEN=… node scripts/fetch-status.js</code></p></section>`;
+    $('#status').textContent = 'Refresh failed';
+  } finally {
+    reload.disabled = false;
   }
 }
 
@@ -412,6 +431,20 @@ if (typeof document !== 'undefined') {
     localStorage.removeItem('ghpv.repositories');
     q.value = ''; only.checked = false; render();
   };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey
+        && !e.target.matches('input, textarea, select, [contenteditable]')) {
+      e.preventDefault(); q.focus();
+    }
+    if (e.key === 'Escape') {
+      const menu = document.activeElement?.closest('details');
+      document.querySelectorAll('.dd[open]').forEach((d) => { d.open = false; });
+      menu?.querySelector('summary')?.focus();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('.dd[open]').forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  }, true);
   $('#reload').onclick = load;
   $('#save').onclick = (e) => save(e.currentTarget);
 
