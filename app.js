@@ -370,6 +370,7 @@ function render() {
     ${state ? `<span class="state-dot ${state}" aria-hidden="true"></span>` : ''}${label}</span></div>`).join('');
   $('#visible-count').textContent = `Showing ${shown.length} of ${all.length} repositories`;
   $('#config').textContent = configSummary(all);
+  $('#config').title = configSummary(all);
 
   const bad = failures(shown);
   const failuresOpen = $('#failures details')?.open ?? true;

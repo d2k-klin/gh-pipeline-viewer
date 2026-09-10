@@ -253,7 +253,9 @@ row in the card and in the *Recent failures* list, where you can still see it.
 Individual workflow rows and stage dots always show their own real state.
 
 Each card shows the **newest run per workflow** — never a history of previous runs.
-Repos sort worst-first, with a *Recent failures* roll-up above the grid.
+Repos sort worst-first, with a collapsible *Recent failures* roll-up above the grid.
+The failure list scrolls within a fixed height so it keeps repositories in reach
+on smaller laptop screens.
 
 **The stats strip** across the top of every card:
 
@@ -375,6 +377,22 @@ many of its rows the filter hid.
 - **Stats depth** — the 24h/7d counts come from the newest 100 runs per branch. On a
   very busy repo the 7d figure can undercount; the strip's tooltip says so when the
   page was full.
+
+## Interface and keyboard shortcuts
+
+The graphite-and-amber interface uses compact workflow rows and a sticky filter
+bar, with layouts for 13-inch MacBooks and smaller screens. The fleet summary
+separates healthy, failing, running, and unknown repositories; status labels and
+symbols accompany the colors.
+
+- Press `/` to focus search when you are outside a text field.
+- Press `Escape` to close a filter menu and return focus to its control.
+- Use `Tab` and `Space` to navigate menus and toggle selections.
+- Collapse **Recent failures** to give repositories more room.
+- Hover truncated metadata or the collection summary to read the full value.
+
+Reduced-motion preferences are respected. Refresh shows a loading state and stays
+available to retry if a fetch fails. Filters and Save work as before.
 
 ## Development
 

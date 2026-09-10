@@ -9,6 +9,7 @@
 <meta property="og:description" content="Monitor GitHub Actions health across the repositories, workflows, and branches your team cares about.">
 <meta property="og:type" content="website">
 <title>PipelineHive · Workflow monitor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 36%27%3E%3Cpath fill=%27%23111214%27 stroke=%27%23edc16b%27 stroke-width=%272%27 d=%27M16 2 30 10v16l-14 8L2 26V10Z%27/%3E%3Cpath fill=%27none%27 stroke=%27%23edc16b%27 stroke-width=%272%27 d=%27m9 14 7-4 7 4v8l-7 4-7-4Z%27/%3E%3C/svg%3E">
 <style>
   :root {
     color-scheme: dark;
@@ -70,7 +71,7 @@
   .switch { display: flex; align-items: center; gap: 7px; min-height: 36px; white-space: nowrap; font-size: 12px; cursor: pointer; }
   input[type="checkbox"] { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); flex-shrink: 0; }
   .workspace-meta { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 0; }
-  #config { color: var(--muted); font-size: 11px; }
+  #config { color: var(--muted); font-size: 11px; min-width: 0; overflow-wrap: anywhere; text-align: right; }
   #visible-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
   #failures:empty { display: none; }
   .failure-list { margin-bottom: 20px; border: 1px solid #57383c; border-radius: 8px; background: #21191c; }
@@ -105,12 +106,12 @@
   .stats { display: flex; flex: 1 1 470px; min-width: 0; }
   .stat { flex: 1; min-width: 0; padding: 0 12px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
   .stat:first-child { padding-left: 0; border-left: 0; }
-  .stat em { color: var(--muted); font-size: 9px; font-style: normal; font-weight: 550; letter-spacing: .7px; text-transform: uppercase; }
+  .stat em { color: var(--muted); font-size: 10px; font-style: normal; font-weight: 550; letter-spacing: .7px; text-transform: uppercase; }
   .stat b { font-size: 12px; font-weight: 550; }
   .stat b.bad { color: var(--bad); }
   .stat b a { text-decoration: none; }
   .stat b a:hover { color: var(--accent); }
-  .stat i { font-size: 10px; font-style: normal; color: var(--muted); }
+  .stat i { font-size: 11px; font-style: normal; color: var(--muted); }
   .stat b, .stat i { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker { display: flex; align-items: center; gap: 7px; min-width: 0; }
   .dd { position: relative; min-width: 0; }
@@ -127,7 +128,8 @@
   .menu { position: absolute; z-index: 20; right: 0; width: max-content; min-width: 240px; max-width: min(380px, calc(100vw - 48px));
     max-height: 300px; overflow-y: auto; margin-top: 6px; padding: 6px; background: #242529;
     border: 1px solid #48494f; border-radius: 8px; box-shadow: 0 12px 32px #0006; animation: appear .14s ease; }
-  #repo-filter .menu { left: 0; right: auto; }
+  #repo-filter .menu, .picker .dd:first-child .menu { left: 0; right: auto; }
+  .picker .menu { width: 280px; }
   .menu-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 5px 8px; border-bottom: 1px solid var(--line); }
   .menu label { display: flex; gap: 9px; align-items: center; padding: 8px 6px; font-size: 12px; cursor: pointer; border-radius: 4px; overflow-wrap: anywhere; }
   .menu label:hover { background: #33343a; }
@@ -141,7 +143,7 @@
   .run.running .icon, .run.queued .icon { color: var(--run); animation: pulse 1.8s ease-in-out infinite; }
   .name { color: var(--fg); text-decoration: none; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
   .name:hover { color: var(--accent); }
-  .meta { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+  .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
   .stages { display: flex; align-items: center; gap: 3px; min-width: 0; overflow-x: auto; padding: 2px; }
   .dot { flex: 0 0 20px; height: 20px; display: grid; place-items: center; border-radius: 4px; text-decoration: none;
     color: var(--idle); background: #ffffff07; transition: background .15s; }
@@ -188,6 +190,7 @@
     #repo-filter .dd-value { max-width: 120px; }
     #save { margin-left: auto; }
     .workspace-meta { align-items: flex-start; }
+    #config { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     .failure-hint { display: none; }
     .repo-heading { padding: 12px; gap: 8px; }
     .repo-heading h2 { font-size: 13px; }
